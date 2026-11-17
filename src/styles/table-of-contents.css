@@ -1,0 +1,17 @@
+/* Hallmark · existing workspace · contextual contents navigation */
+.contents-panel__heading { margin-bottom: var(--space-2); color: var(--text-muted); font-size: var(--text-sm); font-weight: 600; }
+.contents-panel__nav { max-height: 340px; overflow-y: auto; }
+.contents-panel__list { display: grid; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
+.contents-panel__level-2 { padding-left: var(--space-2); }
+.contents-panel__level-3 { padding-left: var(--space-4); }
+.contents-panel__link {
+  display: block; padding: var(--space-1) var(--space-2);
+  border-left: 2px solid transparent; color: var(--text-secondary);
+  font-size: var(--text-sm); text-decoration: none; overflow-wrap: anywhere;
+  transition: var(--transition-fast);
+}
+.contents-panel__link[aria-current] { border-color: var(--accent-cyan); color: var(--accent-cyan); font-weight: 700; }
+.contents-panel__link:hover { color: var(--text-primary); background: var(--surface-subtle); }
+.contents-panel__link:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.contents-panel__link:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .contents-panel__link { transition: none; } }

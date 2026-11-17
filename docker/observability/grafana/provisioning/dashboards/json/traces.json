@@ -1,0 +1,69 @@
+{
+  "uid": "foss-traces",
+  "title": "Distributed Traces",
+  "description": "OTLP/HTTP traces from the app via Alloy into Tempo. TraceQL search; the Logs button on a trace jumps to the matching Loki lines.",
+  "tags": ["mechanical-matter", "traces"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 0,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "text",
+      "title": "TraceQL",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Traces arrive over OTLP/HTTP from `src/lib/otel.ts` and are batched by Alloy before Tempo. W3C `traceparent` is honoured on inbound requests, so a trace survives across service hops.\n\n```\n{ resource.service.name = \"mechanical-matter\" }\n{ resource.service.name = \"mechanical-matter\" && status = error }\n{ resource.service.name = \"mechanical-matter\" && duration > 1s }\n{ span.http.status_code >= 500 }\n{ span.db.system = \"postgresql\" && duration > 250ms }\n```"
+      }
+    },
+    {
+      "type": "traces",
+      "title": "Errored traces",
+      "id": 2,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "tempo", "uid": "foss-tempo" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "foss-tempo" },
+          "queryType": "traceql",
+          "tableType": "traces",
+          "limit": 20,
+          "query": "{ resource.service.name = \"mechanical-matter\" && status = error }"
+        }
+      ],
+      "options": {
+        "spanBar": { "label": "Service", "type": "Tag" },
+        "tableType": "traces"
+      }
+    },
+    {
+      "type": "traces",
+      "title": "Slowest server spans (> 1s)",
+      "description": "Usually an OpenFGA or Meilisearch call worth looking at. Tempo's span bar is grouped by the http.route attribute.",
+      "id": 3,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "tempo", "uid": "foss-tempo" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "foss-tempo" },
+          "queryType": "traceql",
+          "tableType": "traces",
+          "limit": 20,
+          "query": "{ resource.service.name = \"mechanical-matter\" && duration > 1s }"
+        }
+      ],
+      "options": {
+        "spanBar": { "label": "http.route", "type": "Tag" },
+        "tableType": "traces"
+      }
+    }
+  ],
+  "annotations": { "list": [] }
+}

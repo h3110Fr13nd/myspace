@@ -1,0 +1,88 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { query } from "../../lib/db";
+import { IamStudio } from "../../components/iam/IamStudio";
+import type { ResourceItem } from "../../components/iam/types";
+import { can, requireManageGrants, accessErrorResponse, ANONYMOUS } from "../../lib/acl/guards";
+
+/**
+ * IAM & Access Studio.
+ *
+ * SECURITY: this page previously read the entire OpenFGA tuple set server-side
+ * and passed it to the client island as `initialTuples`, so the whole
+ * authorization graph was serialised into the page HTML for anyone who could
+ * log in. `isAdmin` gated only the resource list, not the tuples, and the route
+ * sat under `/admin` while the middleware redirect merely required that a
+ * session exist. See
+ * plan/core-architecture/31-iam-access-visibility-and-policy-troubleshooter.md §1 (V4).
+ *
+ * The page now requires `manage_grants` and ships no tuples. Each resource's
+ * ACL is fetched on demand through `/api/v1/permissions/resource`, which
+ * enforces the `read_acl` capability per object rather than granting blanket
+ * visibility of the whole graph to whoever opened this screen.
+ */
+const currentUser = Astro.locals.user || ANONYMOUS;
+
+let allResources: ResourceItem[] = [];
+let authorized = false;
+let accessError: string | null = null;
+
+if (currentUser === ANONYMOUS) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`);
+}
+
+// Space-level gate: this screen is for people who administer access.
+try {
+  await requireManageGrants({ actor: currentUser, object: 'space:main', ip: Astro.clientAddress });
+  authorized = true;
+} catch (err) {
+  const denied = accessErrorResponse(err);
+  accessError = denied ? (await denied.json()).error : 'You do not have access to the IAM studio.';
+}
+
+if (authorized) {
+  try {
+    const dbRes = await query(
+      "SELECT id, type, title, owner_id, parent_id, is_public, path FROM resources ORDER BY title ASC"
+    );
+    allResources = dbRes.rows || [];
+  } catch (e: any) {
+    console.error("[IAM] DB fetch error:", e.message);
+  }
+}
+---
+
+<BaseLayout
+  title="IAM & Access Studio · Second Brain"
+  description="Fine-grained ReBAC Access Control, Groups, and Permissions Studio."
+  currentUser={currentUser}
+>
+  {/* No wrapper class: `site-container` and `iam-page` were never defined in any
+      stylesheet (they are Quartz heritage from before the fork), and BaseLayout
+      already constrains the page via `<main class="page-shell">`. The studio
+      styles itself through `.iam-studio-split` / `.iam-studio-panel` in
+      iam.css, so nothing is lost. Adding a rule here instead would have been
+      inventing a layout nobody designed. */}
+  <div>
+    {
+      !authorized ? (
+        <div class="ui-card ui-pad-6" role="alert">
+          <h2 class="ui-h4">Access denied</h2>
+          <p class="ui-muted">{accessError}</p>
+          <p class="ui-muted ui-text-sm">
+            The IAM studio lists who has access to every resource, so it is restricted to
+            people who can change access. Open a single resource and use its Share dialog if you
+            only need to review one ACL.
+          </p>
+        </div>
+      ) : (
+        <IamStudio
+          client:load
+          allResources={allResources}
+          currentUser={currentUser}
+          fgaError={null}
+        />
+      )
+    }
+  </div>
+</BaseLayout>

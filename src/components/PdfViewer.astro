@@ -1,0 +1,28 @@
+---
+import { PdfViewer as PdfViewerReact } from './PdfViewer';
+
+interface Props {
+  assetId: string;
+  title?: string;
+  currentUser?: string;
+  initialPage?: number;
+  height?: string;
+}
+
+const {
+  assetId,
+  title = 'Research Document',
+  currentUser = Astro.locals.user || 'user:anonymous',
+  initialPage = 1,
+  height = '720px',
+} = Astro.props;
+---
+
+<PdfViewerReact
+  client:visible
+  assetId={assetId}
+  title={title}
+  currentUser={currentUser}
+  initialPage={initialPage}
+  height={height}
+/>

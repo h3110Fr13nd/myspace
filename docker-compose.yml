@@ -1,0 +1,565 @@
+name: workspace-stack
+
+# ==============================================================================
+# 🚀 Workspace Docker Compose Architecture & Profiles
+# ==============================================================================
+#
+# Profiles:
+#   1. Default (No flag: `docker compose up -d`):
+#      - Optimized for Cloud / Free-Tier VM hosting.
+#      - Uses Cloudflare R2 / AWS S3 for object storage (no local storage container overhead).
+#      - Runs: `app`, `postgres`, `openfga`, `meilisearch`.
+#      - The Cloudflare Tunnel (`cloudflared`) is now behind the `tunnel` profile so
+#        local dev doesn't crash-loop when CLOUDFLARE_TUNNEL_TOKEN is unset.
+#        On the VM start with: `docker compose --profile tunnel up -d`.
+#
+#   2. Local Offline (`docker compose --profile local-offline up -d`):
+#      - Fully self-contained local development or bare-metal self-hosting without Cloudflare.
+#      - Activates `minio` (local S3 replacement on :9000/:9001).
+#      - Activates `traefik` (edge reverse proxy with automatic local SSL on :80/:443/:8080).
+#
+#   3. Observability (`docker compose --profile infra up -d`):
+#      - Grafana (:3000) + Prometheus + Loki + Tempo + Alloy. Zero clicks: users,
+#        datasources, dashboards and alert rules are file-provisioned from
+#        `docker/observability/grafana/provisioning/`, and anonymous Admin access
+#        is on by default so opening :3000 lands straight on the dashboards.
+#      - Nothing else in the stack is wired to a collector, so this profile is
+#        purely additive — see plan/core-architecture/32-observability-and-telemetry-stack.md
+#
+# The default five-service runtime is capped at 832 MiB / 1 vCPU in aggregate;
+# see docs/GOALS.md. Optional profiles are for development/operations and are
+# outside that constrained runtime budget.
+# ==============================================================================
+
+# Docker's default json-file driver has no rotation, so an unbounded log file is
+# both a disk risk on the VM and a reason for a fresh Loki to try ingesting days
+# of history on boot. One cap, applied everywhere.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Local observability services also get a hard memory ceiling each: the whole
+# profile should idle well under 500 MB and never starve the app.
+x-observability-defaults: &observability-defaults
+  restart: unless-stopped
+  networks:
+    - workspace_net
+  logging: *default-logging
+
+services:
+  # --- Ingress Layer (Cloudflare Tunnel - Zero Open Inbound Ports) ---
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: workspace_cloudflared
+    profiles:
+      - tunnel
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks:
+      - workspace_net
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # --- Alternative Local Reverse Proxy (Profile: local-offline) ---
+  # Traefik handles local edge routing, dashboards, and automatic TLS when not using Cloudflare Tunnel.
+  traefik:
+    image: traefik:v3.0
+    container_name: workspace_traefik
+    profiles:
+      - local-offline
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entryPoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080" # Traefik Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - workspace_net
+    restart: unless-stopped
+    logging: *default-logging
+
+  # --- Database Layer (PostgreSQL 16 + pgvector) ---
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: workspace_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-workspace_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=64MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "max_connections=30"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 256M
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - workspace_net
+
+  # --- OpenFGA Datastore Schema Migration ---
+  openfga-migrate:
+    image: openfga/openfga:v1.22.0
+    container_name: workspace_openfga_migrate
+    command: migrate
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: "postgres://postgres@postgres:5432/${POSTGRES_DB:-workspace_db}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - workspace_net
+    restart: "no"
+
+  # --- Authorization Layer (OpenFGA ReBAC) ---
+  openfga:
+    image: openfga/openfga:v1.22.0
+    container_name: workspace_openfga
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: "postgres://postgres@postgres:5432/${POSTGRES_DB:-workspace_db}?sslmode=disable"
+      OPENFGA_LOG_LEVEL: info
+    command:
+      - run
+      - --datastore-max-open-conns=16
+      - --datastore-max-idle-conns=8
+      - --max-concurrent-checks-per-batch-check=4
+      - --max-concurrent-reads-for-check=4
+    deploy:
+      resources:
+        limits:
+          cpus: "0.08"
+          memory: 96M
+    logging: *default-logging
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8085:8080" # HTTP API mapped to 8085
+      - "8086:8081" # gRPC API mapped to 8086
+      - "3005:3000" # Playground mapped to 3005
+    networks:
+      - workspace_net
+      - shared_svc_net
+
+  # --- Alternative Local Object Storage (Profile: local-offline) ---
+  # MinIO provides an S3-compatible local bucket for offline testing without a Cloudflare R2 account.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: workspace_minio
+    profiles:
+      - local-offline
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_PORT:-9002}:9000" # S3 API
+      - "9001:9001" # Web Console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - workspace_net
+    logging: *default-logging
+
+  # --- Instant Full-Text & Dual Search Engine ---
+  meilisearch:
+    image: getmeili/meilisearch:v1.8
+    container_name: workspace_meilisearch
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-meili_dev_master_key}
+      MEILI_ENV: development
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 160M
+    ports:
+      - "7705:7700"
+    volumes:
+      - meili_data:/meili_data
+    networks:
+      - workspace_net
+    logging: *default-logging
+
+  # --- Valkey: sessions, ACL cache, rate-limits, job queue ---
+  # Unconditional, not profile-gated.
+  #
+  # This was under the `scale` profile while `app` carried an unconditional
+  # `REDIS_URL: redis://valkey:6379`, so the two disagreed by default: a plain
+  # `docker compose up -d` never created the container, and on the VM it had in
+  # fact never existed at all. The app's fallback (no-op) hid it — logs showed
+  # only "redis unavailable — degrading to no-op" — while the OpenFGA answer cache
+  # silently ran with no backing store, which is the difference between a fast
+  # page and a 300s one.
+  #
+  # The graceful degradation is still worth having, so it is kept as the behaviour
+  # for a genuinely unreachable Redis. What is removed is the configuration where
+  # the app asks for a dependency that the default deployment never starts.
+  valkey:
+    image: redis:7-alpine
+    container_name: workspace_valkey
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "32mb"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 64M
+    ports:
+      - "${VALKEY_PORT:-6380}:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - workspace_net
+      - shared_svc_net
+
+  # --- Core Application (Astro SSR + Node.js) ---
+  app:
+    # The production image is built by CI and pushed to GHCR (see
+    # .github/workflows/deploy.yml). The VM pulls it instead of building locally,
+    # which is what was exhausting the free-tier VM's memory.
+    #
+    # `build:` stays so local dev (`docker compose up -d`) still builds from this
+    # checkout; `image:` names the tag `docker compose pull`/`up --no-build` use.
+    image: ghcr.io/example-org/foss-content-workspace:${GIT_COMMIT_SHA:-latest}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.60"
+          memory: 256M
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+    container_name: workspace_app
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=192 --max-semi-space-size=8 --import=/app/dist/instrumentation.mjs
+      PORT: 4321
+      HOST: 0.0.0.0
+      DATABASE_URL: "postgresql://postgres@postgres:5432/${POSTGRES_DB:-workspace_db}"
+      OPENFGA_API_URL: "http://openfga:8080"
+      OPENFGA_STORE_ID: ${OPENFGA_STORE_ID:-}
+      OPENFGA_MAX_CONCURRENCY: ${OPENFGA_MAX_CONCURRENCY:-4}
+      OPENFGA_BATCH_SIZE: ${OPENFGA_BATCH_SIZE:-10}
+      OPENFGA_BATCH_TIMEOUT_MS: ${OPENFGA_BATCH_TIMEOUT_MS:-5000}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+      # Storage (works with Cloudflare R2, AWS S3, GCS, or local MinIO)
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-foss-blog-assets}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      # Search
+      MEILISEARCH_URL: "http://meilisearch:7700"
+      MEILISEARCH_KEY: ${MEILI_MASTER_KEY:-meili_dev_master_key}
+      SEARCH_ENGINE: ${SEARCH_ENGINE:-meilisearch}
+      # Scale layer (optional — app degrades to no-op when Valkey is absent)
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-false}
+      AUTH_SESSION_STORE: ${AUTH_SESSION_STORE:-}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-false}
+      RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-false}
+      SECURITY_HEADERS: ${SECURITY_HEADERS:-true}
+      # Tracing is opt-in because it instruments every request and datastore
+      # call. It is not required for serving; set OTEL_ENABLED=true when the
+      # separate infra profile is intentionally being used for trace collection.
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-mechanical-matter}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
+      # Keep tracing useful without creating a span for every nested operation
+      # on a CPU-constrained instance. Set to 1 temporarily for focused tracing.
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.05}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Bearer secret for GET /api/v1/metrics. Unset locally (the app then allows
+      # the scrape); REQUIRED in production, where the app returns 503 without it.
+      # Prometheus gets the same value from its own environment.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Google OAuth & Google Drive Sync
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      # Real-time Collaboration & Durable Objects
+      COLLAB_WS_URL: ${COLLAB_WS_URL:-}
+      INTERNAL_SYNC_SECRET: ${INTERNAL_SYNC_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+    user: "1000:1000"
+    ports:
+      - "4322:4321"
+    volumes:
+      - ./content:/app/content
+      - ./public:/app/public:ro
+      - ./public/pdfs:/app/dist/client/pdfs:ro
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openfga:
+        condition: service_started
+      # `service_started`, not `service_healthy`, on purpose — same as `openfga`
+      # above. Redis is a performance dependency, so the container must exist
+      # (otherwise `REDIS_URL` resolves to nothing and every cache read pays a DNS
+      # failure), but its health must not gate application startup: gating on it
+      # would turn an optimisation into an availability dependency, which is the
+      # opposite of what the no-op fallback is for.
+      valkey:
+        condition: service_started
+    networks:
+      - workspace_net
+
+  # ============================================================================
+  # Observability (Profile: infra)
+  # ============================================================================
+  # One command, no browser clicks:  docker compose --profile infra up -d
+  # then open http://localhost:3000 — anonymous Admin access is on, datasources,
+  # dashboards and alert rules are provisioned from ./docker/observability/.
+  # Every retention window below is deliberately short; the volumes are safe to
+  # delete at any time (`docker compose --profile infra down -v`).
+
+  # Metrics store. Scrapes the app's /api/v1/metrics and evaluates the RED
+  # recording/alerting rules. Production swap: add a remote_write block pointing
+  # at Mimir/Prometheus-remote-write and turn this into a thin local cache.
+  prometheus:
+    <<: *observability-defaults
+    image: prom/prometheus:v3.5.0
+    container_name: workspace_prometheus
+    profiles:
+      - infra
+    # The wrapper writes METRICS_TOKEN to a file for `bearer_token_file`, then
+    # execs the real binary with these same arguments. See
+    # docker/observability/prometheus/entrypoint.sh.
+    entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-48h}"
+      - "--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-2GB}"
+      - "--storage.tsdb.max-block-duration=2h"
+      - "--web.enable-remote-write-receiver"
+    environment:
+      # Must match the app's METRICS_TOKEN. Unset locally, the app allows the
+      # scrape; in production the app refuses it (503) rather than serving it open.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    volumes:
+      # Directory mount, not a file mount: editing prometheus.yml on the host is
+      # then visible to a running container without a recreate.
+      - ./docker/observability/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    depends_on:
+      app:
+        condition: service_started
+
+  # Alert delivery. Prometheus evaluating a rule only produces a series; this is
+  # what turns a firing alert into a notification. No receiver is configured by
+  # default (see .env.example) — the rendered config always has a valid sink, so
+  # `--profile infra` works with zero setup and nothing is sent anywhere unless an
+  # operator sets ALERT_WEBHOOK_URL or the ALERT_SMTP_* group.
+  alertmanager:
+    <<: *observability-defaults
+    image: prom/alertmanager:v0.28.1
+    container_name: workspace_alertmanager
+    profiles:
+      - infra
+    # Renders alertmanager.yml.tpl against the environment, then execs the real
+    # binary. A receiver with an unset target is invalid YAML and Alertmanager has
+    # no conditional config, so the receivers list is built at boot.
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    environment:
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_SMTP_HOST: ${ALERT_SMTP_HOST:-}
+      ALERT_SMTP_PORT: ${ALERT_SMTP_PORT:-587}
+      ALERT_SMTP_USERNAME: ${ALERT_SMTP_USERNAME:-}
+      ALERT_SMTP_PASSWORD: ${ALERT_SMTP_PASSWORD:-}
+    volumes:
+      # Directory mount, for the same reason as every other service here: a file
+      # mount keeps the old inode after a host-side edit.
+      - ./docker/observability/alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9094}:9093"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  # Log store. Written by Alloy from container stdout; read by Grafana.
+  loki:
+    <<: *observability-defaults
+    image: grafana/loki:3.5.1
+    container_name: workspace_loki
+    profiles:
+      - infra
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./docker/observability/loki:/etc/loki:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Trace store. Receives batched OTLP from Alloy.
+  tempo:
+    <<: *observability-defaults
+    image: grafana/tempo:2.8.2
+    container_name: workspace_tempo
+    profiles:
+      - infra
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./docker/observability/tempo:/etc/tempo:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    depends_on:
+      alloy:
+        condition: service_started
+
+  # The single agent. Docker service discovery -> Loki, OTLP receiver -> Tempo,
+  # plus its own /metrics for the pipeline-health panel. This is the only piece
+  # that changes shape in production (ship it as a DaemonSet).
+  alloy:
+    <<: *observability-defaults
+    image: grafana/alloy:v1.9.1
+    container_name: workspace_alloy
+    profiles:
+      - infra
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./docker/observability/alloy:/etc/alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    ports:
+      - "127.0.0.1:${ALLOY_PORT:-12345}:12345"
+      # OTLP ingest. The app reaches it over the internal network as
+      # http://alloy:4318; the host mapping is for `astro dev` running outside
+      # Docker, and is bound to loopback so the collector is never public.
+      - "127.0.0.1:${OTLP_HTTP_PORT:-4318}:4318"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  # UI. Anonymous Admin locally (set GRAFANA_ANON_ENABLED=false in .env to turn
+  # it off); analytics and update checks are hard-disabled in every profile.
+  grafana:
+    <<: *observability-defaults
+    image: grafana/grafana:12.1.0
+    container_name: workspace_grafana
+    profiles:
+      - infra
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: ${GRAFANA_ANON_ENABLED:-true}
+      GF_AUTH_ANONYMOUS_ORG_ROLE: ${GRAFANA_ANON_ROLE:-Admin}
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_DISABLE_LOGIN_FORM:-true}
+      GF_USERS_DEFAULT_THEME: ${GRAFANA_THEME:-system}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/workspace-overview.json
+    volumes:
+      - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+
+networks:
+  # Named consistently so other local Compose projects can join it, while still
+  # letting this project create it on a clean machine.
+  shared_svc_net:
+    name: shared_svc_net
+    driver: bridge
+
+  workspace_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  meili_data:
+  minio_data:
+  valkey_data:
+  prometheus_data:
+  alertmanager_data:
+  loki_data:
+  tempo_data:
+  alloy_data:
+  grafana_data:

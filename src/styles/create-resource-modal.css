@@ -1,0 +1,110 @@
+/* Hallmark · v2.0.0 · existing workspace UI · tokenized form details */
+/* Critique: inline styles split the modal from its design system and hid choice state. */
+.create-resource-modal__title {
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.create-resource-modal__footer {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.create-resource-modal__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+
+.create-resource-modal__actions > .ui-button {
+  min-width: 0;
+}
+
+.create-resource-modal__resource-summary {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.create-resource-modal__resource-name {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.create-resource-modal__resource-description {
+  font-size: var(--text-xs);
+}
+
+.create-resource-modal__file-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.create-resource-modal__upload-icon {
+  opacity: 0.7;
+}
+
+.create-resource-modal__upload-prompt {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.create-resource-modal__visibility {
+  padding-block: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.create-resource-modal__visibility-checkbox {
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.create-resource-modal__error {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--status-danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-danger-soft);
+  color: var(--status-danger);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 480px) {
+  .create-resource-modal__footer {
+    flex-wrap: wrap;
+  }
+
+  .create-resource-modal__back {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .create-resource-modal__actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .create-resource-modal__actions > .ui-button {
+    width: 100%;
+    white-space: normal;
+  }
+}
+
+.create-resource-modal__fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

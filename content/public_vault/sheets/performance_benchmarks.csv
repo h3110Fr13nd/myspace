@@ -1,0 +1,8 @@
+Model Architecture,Quantization,Context Window,Edge Device,Latency (ms),Energy (J),Accuracy (MMLU)
+TinyLLM-1.1B,INT4,2048,Raspberry Pi 5,18.4,0.42,61.8%
+TinyLLM-1.1B,FP16,2048,Jetson Orin Nano,8.2,0.68,64.2%
+Llama-3-3B,INT4,4096,Jetson Orin Nano,24.6,1.85,68.4%
+Phi-3-Mini-3.8B,INT4,4096,Jetson AGX Orin,12.1,1.15,70.1%
+Mistral-7B-Instruct,INT4,8192,Edge Server RTX 4090,4.8,3.20,74.9%
+PPO-Agent-Scheduler,RL-Actor,512,ESP32 Micro-Edge,2.1,0.05,94.2%
+

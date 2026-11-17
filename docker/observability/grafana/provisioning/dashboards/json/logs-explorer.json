@@ -1,0 +1,77 @@
+{
+  "uid": "foss-logs",
+  "title": "Logs Explorer",
+  "description": "pino JSON from every container in the stack, parsed into fields. Use the query snippets below as a starting point.",
+  "tags": [
+    "mechanical-matter",
+    "logs"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 0,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "Saved queries",
+      "id": 1,
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "`service` is the compose service name and `project` scopes to this stack. pino emits one JSON object per line, so every field is filterable; `level` and `status` are promoted to labels by Alloy, everything else is a query-time `| json` field.\n\n| Intent | LogsQL |\n|---|---|\n| Everything the app logged | `{project=\"workspace-stack\", service=\"app\"}` |\n| Errors only | `{project=\"workspace-stack\", level=~\"40\\|50\\|60\"}` |\n| One trace, end to end | `{project=\"workspace-stack\"} \\| json \\| trace_id=\"<32-hex>\"` |\n| Slow requests | `{project=\"workspace-stack\"} \\| json \\| durationMs > 1000` |\n| 5xx responses | `{project=\"workspace-stack\", status=~\"5..\"}` |\n| Auth activity | `{project=\"workspace-stack\", service=\"app\"} \\| json \\| url=~\".*/api/v1/auth.*\"` |\n| Database / OpenFGA noise | `{project=\"workspace-stack\", service=~\"postgres\\|openfga\"}` |\n\nSampled with `| logfmt`, parsed with `| json`, filtered with `|= \"needle\"`, de-noised with `| drop __error__, __error_details__`."
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Log stream",
+      "id": 2,
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "foss-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "foss-loki"
+          },
+          "editorMode": "code",
+          "expr": "{project=\"workspace-stack\"}",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommon": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+  ],
+  "annotations": {
+    "list": []
+  }
+}

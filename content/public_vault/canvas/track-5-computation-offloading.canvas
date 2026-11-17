@@ -1,0 +1,293 @@
+{
+  "nodes": [
+    {
+      "id": "header-track-5-computation-offloading",
+      "type": "text",
+      "text": "# Track 5: Computation Offloading & Algorithmic Heuristics\n\nGame-theoretic task offloading, genetic algorithms, Pareto trade-offs (latency vs energy), and simulation toolkits (WorkflowSim).\n\n**Total Papers**: 12 curated research studies.",
+      "x": 40,
+      "y": 40,
+      "width": 520,
+      "height": 180,
+      "color": "2"
+    },
+    {
+      "id": "group-track-5-computation-offloading-0",
+      "type": "group",
+      "label": "Task Offloading & Multi-Objective Scheduling (8 papers)",
+      "x": 36,
+      "y": 296,
+      "width": 838,
+      "height": 1138,
+      "color": "2"
+    },
+    {
+      "id": "paper-9",
+      "type": "resource",
+      "resourceId": "paper:paper-09-latency-and-reliability-aware-edge-computatio",
+      "resourceType": "paper",
+      "label": "P09: Latency and Reliability Aware Edge Computation O...",
+      "x": 60,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-10",
+      "type": "resource",
+      "resourceId": "paper:paper-10-energy-efficient-task-offloading-and-efficien",
+      "resourceType": "paper",
+      "label": "P10: Energy-efficient task offloading and efficient r...",
+      "x": 470,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-11",
+      "type": "resource",
+      "resourceId": "paper:paper-11-cost-effective-scheduling-for-dependent-tasks",
+      "resourceType": "paper",
+      "label": "P11: Cost-Effective Scheduling for Dependent Tasks Wi...",
+      "x": 60,
+      "y": 600,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-12",
+      "type": "resource",
+      "resourceId": "paper:paper-12-dynamic-task-scheduling-in-cloud-assisted-mob",
+      "resourceType": "paper",
+      "label": "P12: Dynamic Task Scheduling in Cloud-Assisted Mobile...",
+      "x": 470,
+      "y": 600,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-16",
+      "type": "resource",
+      "resourceId": "paper:paper-16-profit-maximized-collaborative-computation-of",
+      "resourceType": "paper",
+      "label": "P16: Profit-Maximized Collaborative Computation Offlo...",
+      "x": 60,
+      "y": 880,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-19",
+      "type": "resource",
+      "resourceId": "paper:paper-19-delay-optimal-computation-task-scheduling-for",
+      "resourceType": "paper",
+      "label": "P19: Delay-optimal computation task scheduling for mo...",
+      "x": 470,
+      "y": 880,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-35",
+      "type": "resource",
+      "resourceId": "paper:paper-35-multi-model-running-latency-optimization-in-a",
+      "resourceType": "paper",
+      "label": "P35: Multi-Model Running Latency Optimization in an E...",
+      "x": 60,
+      "y": 1160,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "paper-40",
+      "type": "resource",
+      "resourceId": "paper:paper-40-a-federated-learning-framework-for-multi-para",
+      "resourceType": "paper",
+      "label": "P40: A Federated Learning Framework for Multi-Paramet...",
+      "x": 470,
+      "y": 1160,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-5-computation-offloading-0"
+    },
+    {
+      "id": "group-track-5-computation-offloading-1",
+      "type": "group",
+      "label": "Metaheuristics & Workflow Simulators (WorkflowSim, Firefly, GA) (4 papers)",
+      "x": 36,
+      "y": 1556,
+      "width": 838,
+      "height": 578,
+      "color": "3"
+    },
+    {
+      "id": "paper-14",
+      "type": "resource",
+      "resourceId": "paper:paper-14-a-new-task-scheduling-scheme-based-on-genetic",
+      "resourceType": "paper",
+      "label": "P14: A New Task Scheduling Scheme Based on Genetic Al...",
+      "x": 60,
+      "y": 1580,
+      "width": 380,
+      "height": 250,
+      "color": "3",
+      "parentId": "group-track-5-computation-offloading-1"
+    },
+    {
+      "id": "paper-31",
+      "type": "resource",
+      "resourceId": "paper:paper-31-enhancing-workflow-efficiency-with-a-modified",
+      "resourceType": "paper",
+      "label": "P31: Enhancing workflow efficiency with a modified Fi...",
+      "x": 470,
+      "y": 1580,
+      "width": 380,
+      "height": 250,
+      "color": "3",
+      "parentId": "group-track-5-computation-offloading-1"
+    },
+    {
+      "id": "paper-65",
+      "type": "resource",
+      "resourceId": "paper:paper-65-workflowsim-a-toolkit-for-simulating-scientif",
+      "resourceType": "paper",
+      "label": "P65: WorkflowSim: A toolkit for simulating scientific...",
+      "x": 60,
+      "y": 1860,
+      "width": 380,
+      "height": 250,
+      "color": "3",
+      "parentId": "group-track-5-computation-offloading-1"
+    },
+    {
+      "id": "paper-76",
+      "type": "resource",
+      "resourceId": "paper:paper-76-task-offloading-and-archery-pufferfish-optimi",
+      "resourceType": "paper",
+      "label": "P76: Task offloading and Archery Pufferfish Optimizat...",
+      "x": 470,
+      "y": 1860,
+      "width": 380,
+      "height": 250,
+      "color": "3",
+      "parentId": "group-track-5-computation-offloading-1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-paper-9-paper-10",
+      "fromNode": "paper-9",
+      "fromSide": "right",
+      "toNode": "paper-10",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-10-paper-11",
+      "fromNode": "paper-10",
+      "fromSide": "bottom",
+      "toNode": "paper-11",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "compares with"
+    },
+    {
+      "id": "edge-paper-11-paper-12",
+      "fromNode": "paper-11",
+      "fromSide": "right",
+      "toNode": "paper-12",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "extends"
+    },
+    {
+      "id": "edge-paper-12-paper-16",
+      "fromNode": "paper-12",
+      "fromSide": "bottom",
+      "toNode": "paper-16",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-16-paper-19",
+      "fromNode": "paper-16",
+      "fromSide": "right",
+      "toNode": "paper-19",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "compares with"
+    },
+    {
+      "id": "edge-paper-19-paper-35",
+      "fromNode": "paper-19",
+      "fromSide": "bottom",
+      "toNode": "paper-35",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "extends"
+    },
+    {
+      "id": "edge-paper-35-paper-40",
+      "fromNode": "paper-35",
+      "fromSide": "right",
+      "toNode": "paper-40",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-14-paper-31",
+      "fromNode": "paper-14",
+      "fromSide": "right",
+      "toNode": "paper-31",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "3",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-31-paper-65",
+      "fromNode": "paper-31",
+      "fromSide": "bottom",
+      "toNode": "paper-65",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "3",
+      "label": "compares with"
+    },
+    {
+      "id": "edge-paper-65-paper-76",
+      "fromNode": "paper-65",
+      "fromSide": "right",
+      "toNode": "paper-76",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "3",
+      "label": "extends"
+    }
+  ],
+  "groupingVersion": 1
+}

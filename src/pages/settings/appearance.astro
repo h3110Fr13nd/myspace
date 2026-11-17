@@ -1,0 +1,305 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { ACCENTS, DENSITIES, MODES } from '../../lib/prefs';
+import { CHROME_MODE_OPTIONS } from '../../lib/chrome';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+if (currentUser === 'user:anonymous') {
+  return Astro.redirect('/login?redirect=/settings/appearance');
+}
+---
+
+<BaseLayout
+  title="Appearance & Theming · FOSS Content Workspace"
+  description="Customize your workspace theme, accent color palette, layout density, and surface mode."
+  currentUser={currentUser}
+>
+  <div class="container appearance-page">
+    {/* Page Header */}
+    <div class="appearance-header">
+      <div>
+        <h1 class="appearance-title">
+          🎨 Appearance &amp; Theming
+        </h1>
+        <p class="appearance-desc">
+          Customize how your workspace looks and feels. Settings are saved locally and applied instantly without reloading.
+        </p>
+      </div>
+
+      <div class="appearance-header-actions">
+        <a href="/settings/security" class="ui-button ui-button--secondary ui-button--sm">
+          ⚙️ Security &amp; Keys
+        </a>
+        <button id="reset-defaults-btn" type="button" class="ui-button ui-button--ghost ui-button--sm">
+          ↺ Reset Defaults
+        </button>
+      </div>
+    </div>
+
+    <div class="appearance-grid">
+      {/* SECTION 1: Theme (Dark / Light) */}
+      <div class="ui-card ui-card appearance-card">
+        <div class="appearance-card__header">
+          <h2 class="appearance-section-title">
+            🌓 Base Theme
+          </h2>
+          <span id="badge-theme" class="ui-badge ui-badge--info">Dark</span>
+        </div>
+        <p class="appearance-card__desc">
+          Switch between dark and light color modes. Dark mode preserves eye comfort in low-light settings; light mode maximizes contrast.
+        </p>
+        <div class="appearance-option-group">
+          <button
+            type="button"
+            class="appearance-option-btn"
+            data-pref-name="theme"
+            data-pref-val="dark"
+          >
+            <span class="appearance-option-icon">🌙</span>
+            <div class="appearance-option-text">
+              <span class="appearance-option-label">Dark Mode</span>
+              <span class="appearance-option-sub">Deep slate &amp; glass surfaces</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            class="appearance-option-btn"
+            data-pref-name="theme"
+            data-pref-val="light"
+          >
+            <span class="appearance-option-icon">☀️</span>
+            <div class="appearance-option-text">
+              <span class="appearance-option-label">Light Mode</span>
+              <span class="appearance-option-sub">Crisp paper &amp; soft borders</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION 2: Accent Palette */}
+      <div class="ui-card ui-card appearance-card">
+        <div class="appearance-card__header">
+          <h2 class="appearance-section-title">
+            🎯 Accent Color Palette
+          </h2>
+          <span id="badge-accent" class="ui-badge ui-badge--info">Brand</span>
+        </div>
+        <p class="appearance-card__desc">
+          Pick an accent palette for highlights, active tabs, focused rings, and visual emphasis across cards and viewers.
+        </p>
+        <div class="appearance-swatch-grid">
+          {ACCENTS.map((item) => (
+            <button
+              type="button"
+              class="appearance-swatch"
+              data-pref-name="accent"
+              data-pref-val={item.value}
+            >
+              <span class={`appearance-swatch__preview appearance-swatch__preview--${item.value}`}></span>
+              <span class="appearance-swatch__label">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION 3: Layout Density */}
+      <div class="ui-card ui-card appearance-card">
+        <div class="appearance-card__header">
+          <h2 class="appearance-section-title">
+            📏 Layout Density
+          </h2>
+          <span id="badge-density" class="ui-badge ui-badge--info">Comfortable</span>
+        </div>
+        <p class="appearance-card__desc">
+          Adjust the visual rhythm and padding across toolbars, cards, and tables to fit your display size and workflow.
+        </p>
+        <div class="appearance-option-group">
+          {DENSITIES.map((d) => (
+            <button
+              type="button"
+              class="appearance-option-btn"
+              data-pref-name="density"
+              data-pref-val={d.value}
+            >
+              <span class="appearance-option-icon">{d.value === 'comfortable' ? '📐' : '🗜️'}</span>
+              <div class="appearance-option-text">
+                <span class="appearance-option-label">{d.label}</span>
+                <span class="appearance-option-sub">
+                  {d.value === 'comfortable'
+                    ? 'Spacious 4px-8px scale with generous padding'
+                    : 'Tighter 2px-6px scale for data-heavy workflows'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION 4: Surface Mode */}
+      <div class="ui-card ui-card appearance-card">
+        <div class="appearance-card__header">
+          <h2 class="appearance-section-title">
+            💎 Surface Mode
+          </h2>
+          <span id="badge-mode" class="ui-badge ui-badge--info">Glass</span>
+        </div>
+        <p class="appearance-card__desc">
+          Toggle translucent backdrop blur effects on cards and modals, or use solid flat surfaces for lower GPU usage.
+        </p>
+        <div class="appearance-option-group">
+          {MODES.map((m) => (
+            <button
+              type="button"
+              class="appearance-option-btn"
+              data-pref-name="mode"
+              data-pref-val={m.value}
+            >
+              <span class="appearance-option-icon">{m.value === 'glass' ? '✨' : '🧱'}</span>
+              <div class="appearance-option-text">
+                <span class="appearance-option-label">{m.label}</span>
+                <span class="appearance-option-sub">
+                  {m.value === 'glass'
+                    ? 'Modern frosted glass blur with ambient glow'
+                    : 'Solid opaque surfaces with crisp flat borders'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* SECTION 5: Chrome Layout */}
+      <div class="ui-card ui-card appearance-card">
+        <div class="appearance-card__header">
+          <h2 class="appearance-section-title">
+            🧭 Chrome Layout MARKER7
+          </h2>
+          <span id="badge-chrome" class="ui-badge ui-badge--info">Floating rail</span>
+        </div>
+        <p class="appearance-card__desc">
+          Choose where navigation and actions live. The header keeps a full-width bar; the rail moves them
+          out of the way and fades them while you read.
+        </p>
+        <div class="appearance-option-group">
+          {CHROME_MODE_OPTIONS.map((c) => (
+            <button
+              type="button"
+              class="appearance-option-btn"
+              data-pref-name="chrome"
+              data-pref-val={c.value}
+            >
+              <span class="appearance-option-icon">{c.icon}</span>
+              <div class="appearance-option-text">
+                <span class="appearance-option-label">{c.label}</span>
+                <span class="appearance-option-sub">{c.hint}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+    <div class="ui-card ui-card appearance-preview-box">
+      <div class="appearance-preview-box__header">
+        <div>
+          <h3 class="appearance-preview-box__title">👀 Live Surface Preview</h3>
+          <p class="appearance-preview-box__subtitle">Instant sample rendering reflecting your active theme and token choices</p>
+        </div>
+        <span class="ui-badge ui-badge--success">Active Settings</span>
+      </div>
+
+      <div class="appearance-preview-content">
+        <div class="appearance-preview-row">
+          <button type="button" class="ui-button ui-button--primary ui-button--sm">Primary Button</button>
+          <button type="button" class="ui-button ui-button--secondary ui-button--sm">Secondary</button>
+          <button type="button" class="ui-button ui-button--ghost ui-button--sm">Ghost Button</button>
+          <span class="ui-badge ui-badge--info">Info Badge</span>
+          <span class="ui-badge ui-badge--success">Success</span>
+          <span class="ui-badge ui-badge--warn">Warning</span>
+          <span class="ui-badge ui-badge--danger">Danger</span>
+        </div>
+        <div class="appearance-preview-sample-card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <strong style="color: var(--text-primary); font-size: var(--text-sm);">Card Title · Token Preview</strong>
+            <code style="font-family: var(--font-code); font-size: var(--text-xs); color: var(--accent-cyan);">--accent-cyan</code>
+          </div>
+          <p style="margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5;">
+            This interactive preview demonstrates how typography, surfaces, cards, and accent colors harmonize across the application.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { readPrefs, setPrefs, DEFAULT_PREFS, type WorkspacePrefs } from '../../lib/prefs';
+  import { CHROME_MODE_OPTIONS } from '../../lib/chrome';
+
+  function updateUi(prefs: WorkspacePrefs) {
+    // 1. Update active states on theme/density/mode buttons
+    document.querySelectorAll<HTMLButtonElement>('[data-pref-name]').forEach((btn) => {
+      const key = btn.getAttribute('data-pref-name') as keyof WorkspacePrefs;
+      const val = btn.getAttribute('data-pref-val');
+      const isActive = prefs[key] === val;
+      btn.classList.toggle('appearance-option-btn--active', isActive);
+      btn.classList.toggle('appearance-swatch--active', isActive);
+    });
+
+    // 2. Update status badges
+    const themeBadge = document.getElementById('badge-theme');
+    if (themeBadge) themeBadge.textContent = prefs.theme === 'dark' ? 'Dark' : 'Light';
+
+    const accentBadge = document.getElementById('badge-accent');
+    if (accentBadge) {
+      const labelMap: Record<string, string> = {
+        brand: 'Brand Cyan-Indigo',
+        violet: 'Violet',
+        emerald: 'Emerald',
+        rose: 'Rose',
+        ocean: 'Ocean Blue',
+      };
+      accentBadge.textContent = labelMap[prefs.accent] || prefs.accent;
+    }
+
+    const densityBadge = document.getElementById('badge-density');
+    if (densityBadge) densityBadge.textContent = prefs.density === 'compact' ? 'Compact' : 'Comfortable';
+
+    const modeBadge = document.getElementById('badge-mode');
+    if (modeBadge) modeBadge.textContent = prefs.mode === 'flat' ? 'Flat' : 'Glass';
+
+    const chromeBadge = document.getElementById('badge-chrome');
+    if (chromeBadge) {
+      chromeBadge.textContent =
+        CHROME_MODE_OPTIONS.find((c) => c.value === prefs.chrome)?.label || 'Floating rail';
+    }
+  }
+
+  // Initialize UI with stored preferences
+  const current = readPrefs();
+  updateUi(current);
+
+  // Bind click handlers for all preference options
+  document.querySelectorAll<HTMLButtonElement>('[data-pref-name]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-pref-name') as keyof WorkspacePrefs;
+      const val = btn.getAttribute('data-pref-val');
+      if (!key || !val) return;
+
+      const next = setPrefs((prev) => ({
+        ...prev,
+        [key]: val,
+      }));
+      updateUi(next);
+      // Chrome is applied to <html> by setPrefs; tell live components to re-read it.
+      if (key === 'chrome') {
+        document.dispatchEvent(new CustomEvent('chrome-changed', { detail: { chrome: val } }));
+      }
+    });
+  });
+
+  // Reset Defaults handler
+  document.getElementById('reset-defaults-btn')?.addEventListener('click', () => {
+    const next = setPrefs(() => ({ ...DEFAULT_PREFS }));
+    updateUi(next);
+  });
+</script>

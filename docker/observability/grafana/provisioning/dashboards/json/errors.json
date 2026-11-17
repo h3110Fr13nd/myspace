@@ -1,0 +1,817 @@
+{
+  "uid": "foss-errors",
+  "title": "Errors & Degraded Mode",
+  "description": "What is failing, where, and whether it is a bug or the system correctly refusing. 5xx and 4xx come from the pre-split foss_http_errors_total counter; the two degraded-mode counters are the ones that distinguish 'user has no permission' from 'the authorization engine is down'.",
+  "tags": [
+    "mechanical-matter",
+    "errors"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this",
+      "id": 1,
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Three different failures look identical from outside the app, so they are counted separately.\n\n| Counter | Means | Act on it |\n|---|---|---|\n| `foss_http_errors_total{class=\"server\"}` | A 5xx reached the client. A bug. | Read the error log below, follow the trace. |\n| `foss_http_errors_total{class=\"client\"}` | A 4xx. Usually correct refusal — auth, ReBAC, validation. | Ignore unless one route dominates. |\n| `foss_openfga_errors_total` | The authorization engine was unreachable. | **Every check in that window denied.** A resource showing as 'not permitted' here was never actually evaluated. Treat as a security incident, not a permissions bug. |\n| `foss_unhandled_errors_total` | A promise rejected with no handler, or a throw escaped a request. | The originating line never reached a route, so it has no route label here — go to the log stream. |\n\nAny non-zero rate on the last two is degraded mode, not a permissions complaint. `foss_http_errors_total` is split client/server at write time rather than derived from `foss_http_requests_total{status=~\"5..\"}` so an alert on 5xx stays quiet while a 4xx storm is happening."
+      }
+    },
+    {
+      "type": "stat",
+      "title": "5xx in range",
+      "description": "Responses that reached a client as a server error.",
+      "id": 2,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "expr": "sum(increase(foss_http_errors_total{job=\"app\", class=\"server\"}[$__range])) or vector(0)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "OpenFGA failures in range",
+      "description": "Failed authorization-engine calls. Every check in this window denied without being evaluated.",
+      "id": 3,
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 4,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "expr": "sum(increase(foss_openfga_errors_total{job=\"app\"}[$__range])) or vector(0)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "0 — engine healthy"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Unhandled errors in range",
+      "description": "Rejections with no handler and throws that escaped a request. These never became a response, so they are absent from every HTTP panel here.",
+      "id": 4,
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 9,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "expr": "sum(increase(foss_unhandled_errors_total{job=\"app\"}[$__range])) or vector(0)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "5xx ratio in range",
+      "id": 5,
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 14,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "expr": "sum(increase(foss_http_errors_total{job=\"app\", class=\"server\"}[$__range])) / clamp_min(sum(increase(foss_http_requests_total{job=\"app\"}[$__range])), 1)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Failing scrapes",
+      "description": "Prometheus could not read /api/v1/metrics. A non-zero value here means this dashboard is showing stale data — check METRICS_TOKEN on both the app and Prometheus first.",
+      "id": 6,
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "expr": "sum(up{job=\"app\"} == 0)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "0 — scrape healthy"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate by route, split client / server",
+      "description": "The 4xx/5xx split is the fastest way to tell a broken deploy from a client hammering an endpoint that correctly refuses it.",
+      "id": 7,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "legendFormat": "5xx {{route}}",
+          "expr": "topk(8, sum by (route) (rate(foss_http_errors_total{job=\"app\", class=\"server\"}[5m]))) > 0"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "legendFormat": "4xx {{route}}",
+          "expr": "topk(8, sum by (route) (rate(foss_http_errors_total{job=\"app\", class=\"client\"}[5m]))) > 0"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/5xx .*/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/4xx .*/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Degraded mode — OpenFGA and unhandled errors",
+      "description": "Both are invisible in the HTTP panels: a failed authorization check still returns a clean 4xx, and an unhandled rejection never becomes a response at all.",
+      "id": 8,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "legendFormat": "openfga {{operation}}",
+          "expr": "sum by (operation) (rate(foss_openfga_errors_total{job=\"app\"}[5m]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "legendFormat": "unhandled {{kind}}",
+          "expr": "sum by (kind) (rate(foss_unhandled_errors_total{job=\"app\"}[5m]))"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.001
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Error scorecard by route",
+      "description": "Counted over the selected range. Click any row's error count to jump to the matching error log lines.",
+      "id": 9,
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "foss-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (route) (increase(foss_http_requests_total{job=\"app\"}[$__range]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (route) (increase(foss_http_errors_total{job=\"app\", class=\"server\"}[$__range]))"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "foss-prometheus"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (route) (increase(foss_http_errors_total{job=\"app\", class=\"client\"}[$__range]))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "route",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "route 1": true,
+              "route 2": true
+            },
+            "renameByName": {
+              "route": "route",
+              "Value #A": "requests",
+              "Value #B": "5xx",
+              "Value #C": "4xx"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "5xx"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Error log lines for this route",
+                    "url": "/explore?left={\"datasource\":\"foss-loki\",\"queries\":[{\"queryType\":\"range\",\"datasource\":{\"type\":\"loki\",\"uid\":\"foss-loki\"},\"expr\":\"{project=\\\"workspace-stack\\\", level=~\\\"50|60|70\\\"} |= \\\"${__value.raw}\\\"\",\"refId\":\"A\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4xx"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Error log lines",
+      "description": "pino lines at error and above. Every line carries a trace_id, and the trace id in the parsed fields is a link into Tempo — so a log line here is one click from the full request, including the OpenFGA checks that produced it.",
+      "id": 10,
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "foss-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "foss-loki"
+          },
+          "editorMode": "code",
+          "expr": "{project=\"workspace-stack\", level=~\"40|50|60|70\"}",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommon": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "foss-prometheus"
+        },
+        "enable": true,
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "iconColor": "red",
+        "name": "Firing alerts",
+        "titleFormat": "{{alertname}}"
+      }
+    ]
+  }
+}

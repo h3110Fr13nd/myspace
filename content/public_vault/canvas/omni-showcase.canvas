@@ -1,0 +1,282 @@
+{
+  "title": "🌟 Universal Workspace Canvas: Full Component & Ecosystem Showcase",
+  "nodes": [
+    {
+      "id": "omni-header-note",
+      "type": "text",
+      "x": 40,
+      "y": 40,
+      "width": 680,
+      "height": 260,
+      "color": "5",
+      "text": "# 🌟 Universal Workspace Canvas: Full Ecosystem Showcase\n### Unified Polymorphic Architecture & Living Multi-Resource Graph\n\nThis authoritative canvas demonstrates the full breadth of interactive viewers seamlessly coexisting in a single JSON Canvas v1.0 spatial board:\n- **Spatial & Visual Modeling**: Interactive Sub-Canvases, RoughJS Excalidraw Sketches, and Live Mermaid SVGs\n- **Computation & Relational Data**: Jupyter Notebooks with LaTeX math & stream outputs, FortuneSheet CSV Grids, and Google Cloud Drive embeds\n- **Scientific Literature & Governance**: Peer-reviewed Research Papers with `ReadToggle`, Streamed PDF Readers, and Schema Dynamic Forms"
+    },
+    {
+      "id": "omni-math-note",
+      "type": "text",
+      "x": 760,
+      "y": 40,
+      "width": 560,
+      "height": 260,
+      "color": "6",
+      "text": "### 📐 Mathematical Formulation: Multi-Tier Offloading\nOptimal DAG task assignment across edge-cloud clusters:\n\n$$\\min_{\\mathbf{x}} \\sum_{i=1}^{N} \\left( \\alpha \\cdot T_i^{\\text{latency}}(\\mathbf{x}) + (1-\\alpha) \\cdot E_i^{\\text{energy}}(\\mathbf{x}) \\right)$$\n\n$$\\text{subject to: } \\quad \\sum_{j \\in \\text{tiers}} x_{ij} = 1, \\quad \\text{Memory}(i) \\le M_{\\text{limit}}$$\n\nWhere $\\mathbf{x} \\in \\{0, 1\\}^{N \\times M}$ is the binary offloading matrix."
+    },
+    {
+      "id": "omni-spec-link",
+      "type": "link",
+      "x": 1360,
+      "y": 40,
+      "width": 380,
+      "height": 260,
+      "color": "3",
+      "url": "https://jsoncanvas.org/spec/1.0/",
+      "label": "Official JSON Canvas v1.0 Standard"
+    },
+    {
+      "id": "group-visual-spatial",
+      "type": "group",
+      "x": 46,
+      "y": 376,
+      "width": 1688,
+      "height": 438,
+      "label": "1. Visual & Spatial Modeling Cluster (Sub-Canvases, Excalidraw Sketches, Mermaid SVGs)",
+      "color": "5"
+    },
+    {
+      "id": "node-subcanvas",
+      "type": "file",
+      "x": 70,
+      "y": 400,
+      "width": 500,
+      "height": 390,
+      "color": "5",
+      "file": "canvas/feature-showcase.canvas",
+      "label": "Embedded Sub-Canvas: Feature Showcase Graph",
+      "parentId": "group-visual-spatial"
+    },
+    {
+      "id": "node-excalidraw",
+      "type": "file",
+      "x": 600,
+      "y": 400,
+      "width": 540,
+      "height": 390,
+      "color": "4",
+      "file": "sketches/system_architecture.excalidraw",
+      "label": "Excalidraw Vector Sketch: Distributed Edge Topology",
+      "parentId": "group-visual-spatial"
+    },
+    {
+      "id": "node-mermaid",
+      "type": "file",
+      "x": 1170,
+      "y": 400,
+      "width": 540,
+      "height": 390,
+      "color": "6",
+      "file": "diagrams/rebac_pipeline.mmd",
+      "label": "Mermaid Architectural Flow: Zero-Trust ReBAC Pipeline",
+      "parentId": "group-visual-spatial"
+    },
+    {
+      "id": "group-data-computation",
+      "type": "group",
+      "x": 46,
+      "y": 896,
+      "width": 1688,
+      "height": 478,
+      "label": "2. Computational & Data Systems Cluster (Jupyter Notebooks, FortuneSheets, Google Drive)",
+      "color": "2"
+    },
+    {
+      "id": "node-jupyter",
+      "type": "file",
+      "x": 70,
+      "y": 920,
+      "width": 560,
+      "height": 430,
+      "color": "2",
+      "file": "notebooks/agentic_optimization.ipynb",
+      "label": "Jupyter Notebook: Autonomous Agentic Optimization & DRL",
+      "parentId": "group-data-computation"
+    },
+    {
+      "id": "node-sheet",
+      "type": "file",
+      "x": 660,
+      "y": 920,
+      "width": 560,
+      "height": 430,
+      "color": "2",
+      "file": "sheets/performance_benchmarks.csv",
+      "label": "FortuneSheet Grid: Edge SLM Latency & Energy Benchmarks",
+      "parentId": "group-data-computation"
+    },
+    {
+      "id": "node-google-sheet",
+      "type": "resource",
+      "x": 1250,
+      "y": 920,
+      "width": 460,
+      "height": 430,
+      "color": "3",
+      "resourceId": "google_sheet:1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+      "resourceType": "google_sheet",
+      "label": "Google Cloud Drive: Multi-Tenant Fleet Telemetry Sheet",
+      "parentId": "group-data-computation"
+    },
+    {
+      "id": "group-literature-governance",
+      "type": "group",
+      "x": 46,
+      "y": 1456,
+      "width": 1688,
+      "height": 478,
+      "label": "3. Literature, Governance & Evaluation Cluster (Research Papers, Streamed PDFs, Dynamic Forms)",
+      "color": "4"
+    },
+    {
+      "id": "node-paper",
+      "type": "resource",
+      "x": 70,
+      "y": 1480,
+      "width": 540,
+      "height": 430,
+      "color": "5",
+      "resourceId": "paper:paper-47-tinyllm-evaluation-and-optimization-of-small-",
+      "resourceType": "paper",
+      "label": "Academic Paper 47: TinyLLM Edge SLM Evaluation",
+      "parentId": "group-literature-governance"
+    },
+    {
+      "id": "node-pdf",
+      "type": "resource",
+      "x": 640,
+      "y": 1480,
+      "width": 560,
+      "height": 430,
+      "color": "1",
+      "resourceId": "pdf:paper_01_towards_an_agentic_ai_design_across_edge_and_cloud",
+      "resourceType": "pdf",
+      "label": "Streamed Asset PDF: Towards Agentic AI Across Edge & Cloud",
+      "parentId": "group-literature-governance"
+    },
+    {
+      "id": "node-form",
+      "type": "resource",
+      "x": 1230,
+      "y": 1480,
+      "width": 480,
+      "height": 430,
+      "color": "4",
+      "resourceId": "form:peer_review_evaluation",
+      "resourceType": "form",
+      "label": "Interactive Dynamic Form: Scientific Peer Review & Audit",
+      "parentId": "group-literature-governance"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-header-to-math",
+      "fromNode": "omni-header-note",
+      "fromSide": "right",
+      "toNode": "omni-math-note",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "formalizes formulation",
+      "color": "6"
+    },
+    {
+      "id": "edge-math-to-link",
+      "fromNode": "omni-math-note",
+      "fromSide": "right",
+      "toNode": "omni-spec-link",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "complies with spec",
+      "color": "3"
+    },
+    {
+      "id": "edge-subcanvas-to-excalidraw",
+      "fromNode": "node-subcanvas",
+      "fromSide": "right",
+      "toNode": "node-excalidraw",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "architects topology",
+      "color": "5"
+    },
+    {
+      "id": "edge-excalidraw-to-mermaid",
+      "fromNode": "node-excalidraw",
+      "fromSide": "right",
+      "toNode": "node-mermaid",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "secures authorization",
+      "color": "6"
+    },
+    {
+      "id": "edge-mermaid-to-jupyter",
+      "fromNode": "node-mermaid",
+      "fromSide": "bottom",
+      "toNode": "node-jupyter",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "feeds execution graph",
+      "color": "2"
+    },
+    {
+      "id": "edge-jupyter-to-sheet",
+      "fromNode": "node-jupyter",
+      "fromSide": "right",
+      "toNode": "node-sheet",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "outputs benchmarks",
+      "color": "2"
+    },
+    {
+      "id": "edge-sheet-to-googlesheet",
+      "fromNode": "node-sheet",
+      "fromSide": "right",
+      "toNode": "node-google-sheet",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "syncs cloud telemetry",
+      "color": "3"
+    },
+    {
+      "id": "edge-sheet-to-paper",
+      "fromNode": "node-sheet",
+      "fromSide": "bottom",
+      "toNode": "node-paper",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "substantiates findings",
+      "color": "5"
+    },
+    {
+      "id": "edge-paper-to-pdf",
+      "fromNode": "node-paper",
+      "fromSide": "right",
+      "toNode": "node-pdf",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "origin document stream",
+      "color": "1"
+    },
+    {
+      "id": "edge-pdf-to-form",
+      "fromNode": "node-pdf",
+      "fromSide": "right",
+      "toNode": "node-form",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "submits evaluation",
+      "color": "4"
+    }
+  ],
+  "groupingVersion": 1
+}
+

@@ -1,0 +1,33 @@
+---
+import '../styles/global.css';
+import { CanvasEditor } from '../components/canvas/CanvasEditor';
+import type { JsonCanvasSpec } from '../components/canvas/types';
+
+const data: JsonCanvasSpec = {
+  nodes: [
+    // The group container. Everything else is placed to overlap it.
+    { id: 'g', type: 'group', x: 60, y: 40, width: 900, height: 700, label: 'Cluster' },
+    // A link node sitting *inside* the group.
+    { id: 'ln', type: 'link', x: 180, y: 180, width: 300, height: 140, url: 'https://example.com/inside', title: 'Inside link' },
+    // A text node inside the group, for comparison.
+    { id: 'tx', type: 'text', x: 560, y: 200, width: 260, height: 120, text: 'Inside text' },
+    // Nodes outside the group.
+    { id: 'out', type: 'link', x: 1100, y: 200, width: 300, height: 140, url: 'https://example.com/outside', title: 'Outside link' },
+    { id: 'out2', type: 'text', x: 1100, y: 460, width: 260, height: 120, text: 'Outside text' },
+  ],
+  edges: [
+    // Runs from inside the group out through its boundary.
+    { id: 'e1', fromNode: 'ln', fromSide: 'right', toNode: 'out', toSide: 'left', label: 'crosses group', toEnd: 'arrow', color: '5' },
+    // Stays entirely inside the group.
+    { id: 'e2', fromNode: 'ln', fromSide: 'bottom', toNode: 'tx', toSide: 'left', label: 'inside group', toEnd: 'arrow', color: '3' },
+  ],
+};
+---
+<html lang="en">
+  <head><meta charset="utf-8" /><title>z-order probe</title></head>
+  <body style="margin:0;height:100vh">
+    <div id="root" style="height:100vh">
+      <CanvasEditor client:only="react" canvasId="zorder-probe" initialData={data} />
+    </div>
+  </body>
+</html>

@@ -1,0 +1,484 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getUserIdentities, listUserApiKeys, getAuthSettings } from '../../lib/auth';
+import { query } from '../../lib/db';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+if (currentUser === 'user:anonymous') {
+  return Astro.redirect('/login?redirect=/settings/security');
+}
+
+const identities = await getUserIdentities(currentUser);
+const apiKeys = await listUserApiKeys(currentUser);
+const authSettings = await getAuthSettings();
+
+const userRes = await query('SELECT email, display_name, avatar_url, password_hash FROM users WHERE id = $1', [currentUser]);
+const userRow = userRes.rows[0] || {};
+const hasPassword = !!userRow.password_hash;
+
+const googleIdentity = identities.find((i) => i.provider === 'google');
+---
+
+<BaseLayout
+  title="Security & API Keys · FOSS Content Workspace"
+  description="Manage your connected login methods, personal scoped API keys, and account security settings."
+  currentUser={currentUser}
+>
+  <Fragment slot="extraHead">
+    <style>
+      .badge-scope {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-family: ui-monospace, monospace;
+        background: rgba(99, 102, 241, 0.15);
+        color: #a5b4fc;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        margin: 2px;
+      }
+      .badge-active {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .badge-revoked {
+        background: rgba(244, 63, 94, 0.15);
+        color: #fda4af;
+        border: 1px solid rgba(244, 63, 94, 0.3);
+      }
+      .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.75);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th {
+        text-align: left;
+        padding: 10px 14px;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--border-glass);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+      }
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        color: var(--text-secondary);
+      }
+    </style>
+  </Fragment>
+
+    <div class="container security-page">
+      <div style="margin-bottom: 2rem;">
+        <h1 class="security-title">
+          ⚙️ Account Security & API Keys
+        </h1>
+        <p style="color: var(--text-secondary); font-size: 0.95rem; margin: 0;">
+          Manage your connected login methods, generate scoped API keys for Obsidian / CLI sync, and configure credentials.
+        </p>
+      </div>
+
+      <div class="security-grid">
+        
+        <!-- SECTION 1: Connected Identity Providers -->
+        <div class="ui-card security-card">
+          <h2 class="security-section-title security-section-title--identity">
+            <span>🔗 Connected Login Methods</span>
+          </h2>
+
+          <div class="security-stack">
+            <!-- Google OAuth Row -->
+            <div class="identity-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <svg width="20" height="20" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z" fill="#4285F4"/>
+                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
+                  <path d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.173 0 7.548 0 9s.347 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+                  <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                </svg>
+                <div>
+                  <div style="font-weight: 600; color: #fff; font-size: 0.9rem;">Google Account</div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted);">
+                    {googleIdentity ? `Linked: ${googleIdentity.email || userRow.email}` : 'Not connected'}
+                  </div>
+                </div>
+              </div>
+
+              {googleIdentity ? (
+                <span class="badge-scope badge-active">Linked ✅</span>
+              ) : (
+                <a href={`/api/v1/auth/google?redirect=${encodeURIComponent('/settings/security')}`} class="glass-button" style="padding: 6px 12px; font-size: 0.78rem;">
+                  Link Google
+                </a>
+              )}
+            </div>
+
+            <!-- Password Auth Row -->
+            <div class="identity-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.25rem;">🔑</span>
+                <div>
+                  <div style="font-weight: 600; color: #fff; font-size: 0.9rem;">Email & Password</div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted);">
+                    {hasPassword ? 'Password is configured' : 'No password set (Google only)'}
+                  </div>
+                </div>
+              </div>
+
+              <span class={`badge-scope ${hasPassword ? 'badge-active' : ''}`}>
+                {hasPassword ? 'Active ✅' : 'Unset ⚠️'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Password Management -->
+        <div class="ui-card security-card">
+          <h2 class="security-section-title">
+            🛡️ {hasPassword ? 'Change Password' : 'Set Account Password'}
+          </h2>
+
+          <form id="password-form" class="security-stack">
+            <div>
+              <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">New Password (min 6 characters)</label>
+              <input type="password" id="new-password" required minlength="6" placeholder="••••••••" class="security-input" />
+            </div>
+
+            <div>
+              <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Confirm New Password</label>
+              <input type="password" id="confirm-new-password" required minlength="6" placeholder="••••••••" class="security-input" />
+            </div>
+
+            <div id="password-msg" style="display: none; font-size: 0.82rem; padding: 6px 10px; border-radius: 6px;"></div>
+
+            <button type="submit" class="glass-button" style="justify-content: center; padding: 9px; font-weight: 600; font-size: 0.88rem; background: var(--bg-glass); border: 1px solid var(--border-glass);">
+              {hasPassword ? 'Update Password' : 'Save Password'}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- SECTION 3: Fine-Grained API Keys Table & Manager -->
+      <div class="ui-card security-card security-card--wide">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700; color: #fff; margin: 0 0 4px 0;">
+              🔑 Personal Scoped API Keys
+            </h2>
+            <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">
+              Use these tokens to programmatically sync vaults from Obsidian or terminal scripts.
+            </p>
+          </div>
+          <button id="open-create-key-btn" class="glass-button" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 600; background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(0, 242, 254, 0.4)); border: 1px solid var(--accent-primary);">
+            + Generate New API Key
+          </button>
+        </div>
+
+        <!-- Newly Generated Secret Modal / Alert -->
+        <div id="raw-secret-banner" style="display: none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem;">
+          <div style="font-weight: 700; color: #34d399; font-size: 0.95rem; margin-bottom: 6px;">
+            ⚠️ Copy your API Key Secret Now
+          </div>
+          <p style="color: var(--text-secondary); font-size: 0.82rem; margin: 0 0 10px 0;">
+            This key will <strong>never be shown again</strong>. Store it securely in your password manager or environment file.
+          </p>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" id="raw-secret-value" readonly style="flex: 1; padding: 8px 12px; background: #000; border: 1px solid var(--accent-cyan); border-radius: 6px; font-family: monospace; font-size: 0.88rem; color: var(--accent-cyan);" />
+            <button id="copy-secret-btn" class="glass-button" style="padding: 8px 14px; font-size: 0.82rem; background: var(--accent-cyan); color: #000; font-weight: 700;">
+              📋 Copy
+            </button>
+          </div>
+        </div>
+
+        <!-- API Keys List -->
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Key Name</th>
+                <th>Prefix</th>
+                <th>Scopes</th>
+                <th>Expires</th>
+                <th>Last Used</th>
+                <th>Requests</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="api-keys-tbody">
+              {apiKeys.length === 0 ? (
+                <tr>
+                  <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    No API keys created yet. Generate one above to enable automated vault syncing!
+                  </td>
+                </tr>
+              ) : (
+                apiKeys.map((k) => (
+                  <tr data-key-id={k.id}>
+                    <td style="font-weight: 600; color: #fff;">{k.name}</td>
+                    <td>
+                      <code style="background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; color: var(--accent-cyan); font-size: 0.8rem;">
+                        {k.keyPrefix}...
+                      </code>
+                    </td>
+                    <td>
+                      {k.scopes.map((s) => (
+                        <span class="badge-scope">{s}</span>
+                      ))}
+                    </td>
+                    <td>
+                      {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : 'Never'}
+                    </td>
+                    <td>
+                      {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : 'Never'}
+                    </td>
+                    <td style="font-family: monospace;">{k.totalRequests}</td>
+                    <td>
+                      <span class={`badge-scope ${k.isRevoked ? 'badge-revoked' : 'badge-active'}`}>
+                        {k.isRevoked ? 'Revoked' : 'Active'}
+                      </span>
+                    </td>
+                    <td>
+                      {!k.isRevoked && (
+                        <div style="display: flex; gap: 6px;">
+                          <button class="roll-key-btn glass-button" data-id={k.id} style="padding: 4px 8px; font-size: 0.75rem;" title="Regenerate key secret">
+                            🔄 Roll
+                          </button>
+                          <button class="revoke-key-btn glass-button" data-id={k.id} style="padding: 4px 8px; font-size: 0.75rem; background: rgba(244,63,94,0.1); border-color: rgba(244,63,94,0.3); color: #fda4af;" title="Revoke key immediately">
+                            ❌ Revoke
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE KEY MODAL -->
+    <div id="create-key-modal" class="modal-overlay" style="display: none;">
+      <div class="ui-card key-modal-card">
+        <h3 style="font-size: 1.25rem; font-weight: 700; color: #fff; margin: 0 0 1.25rem 0;">
+          ✨ Generate Scoped Personal API Key
+        </h3>
+
+        <form id="create-key-form" class="security-stack security-stack--modal">
+          <div>
+            <label style="display: block; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px;">Key Label / Purpose</label>
+            <input type="text" id="modal-key-name" required placeholder="e.g. Obsidian Desktop Sync" class="security-input security-input--modal" />
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 6px;">Scopes & Permissions</label>
+            <div style="display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-glass);">
+              <label class="scope-option">
+                <input type="checkbox" name="scopes" value="vault:sync" checked />
+                <span><strong>vault:sync</strong> — Ingest ZIP archives & folder sync</span>
+              </label>
+              <label class="scope-option">
+                <input type="checkbox" name="scopes" value="vault:read" checked />
+                <span><strong>vault:read</strong> — Fetch documents and vault resources</span>
+              </label>
+              <label class="scope-option">
+                <input type="checkbox" name="scopes" value="vault:write" checked />
+                <span><strong>vault:write</strong> — Create, update, delete documents</span>
+              </label>
+              <label class="scope-option">
+                <input type="checkbox" name="scopes" value="assets:upload" checked />
+                <span><strong>assets:upload</strong> — Upload PDFs and media files to R2/S3</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px;">Expiration Period</label>
+            <select id="modal-key-expiry" class="security-input security-input--modal">
+              <option value="30">30 Days</option>
+              <option value="90" selected>90 Days (Recommended)</option>
+              <option value="365">1 Year</option>
+              <option value="never">Never Expires</option>
+            </select>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0.5rem;">
+            <button type="button" id="close-modal-btn" class="glass-button" style="padding: 8px 16px; font-size: 0.85rem;">
+              Cancel
+            </button>
+            <button type="submit" class="glass-button" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; background: var(--accent-cyan); color: #000;">
+              Generate Key
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script is:inline>
+      const toastErr = (msg) => (window.showToast ? window.showToast(msg, { tone: 'danger' }) : alert(msg));
+      // Password Update Form
+      document.getElementById('password-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const p1 = document.getElementById('new-password').value;
+        const p2 = document.getElementById('confirm-new-password').value;
+        const msgEl = document.getElementById('password-msg');
+
+        if (p1 !== p2) {
+          msgEl.innerText = 'Passwords do not match.';
+          msgEl.style.background = 'rgba(244,63,94,0.15)';
+          msgEl.style.color = '#fda4af';
+          msgEl.style.display = 'block';
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/v1/auth/password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: p1 }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            msgEl.innerText = data.error || 'Failed to update password.';
+            msgEl.style.background = 'rgba(244,63,94,0.15)';
+            msgEl.style.color = '#fda4af';
+            msgEl.style.display = 'block';
+          } else {
+            msgEl.innerText = 'Password saved successfully! ✅';
+            msgEl.style.background = 'rgba(16,185,129,0.15)';
+            msgEl.style.color = '#34d399';
+            msgEl.style.display = 'block';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-new-password').value = '';
+          }
+        } catch (err) {
+          msgEl.innerText = 'Network error: ' + err.message;
+          msgEl.style.display = 'block';
+        }
+      });
+
+      // API Key Modal Controls
+      const modal = document.getElementById('create-key-modal');
+      const openModalBtn = document.getElementById('open-create-key-btn');
+      const closeModalBtn = document.getElementById('close-modal-btn');
+      const createKeyForm = document.getElementById('create-key-form');
+      const rawSecretBanner = document.getElementById('raw-secret-banner');
+      const rawSecretVal = document.getElementById('raw-secret-value');
+      const copySecretBtn = document.getElementById('copy-secret-btn');
+
+      openModalBtn?.addEventListener('click', () => { modal.style.display = 'flex'; });
+      closeModalBtn?.addEventListener('click', () => { modal.style.display = 'none'; });
+
+      copySecretBtn?.addEventListener('click', () => {
+        navigator.clipboard.writeText(rawSecretVal.value);
+        copySecretBtn.innerText = 'Copied! ✅';
+        setTimeout(() => { copySecretBtn.innerText = '📋 Copy'; }, 2000);
+      });
+
+      createKeyForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('modal-key-name').value.trim();
+        const expiryVal = document.getElementById('modal-key-expiry').value;
+        const expiresInDays = expiryVal === 'never' ? null : Number(expiryVal);
+
+        const scopeCheckboxes = document.querySelectorAll('input[name="scopes"]:checked');
+        const scopes = Array.from(scopeCheckboxes).map(c => c.value);
+
+        try {
+          const res = await fetch('/api/v1/auth/api-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, scopes, expiresInDays }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            toastErr('Failed to generate key: ' + (data.error || 'Server error'));
+            return;
+          }
+
+          modal.style.display = 'none';
+          rawSecretVal.value = data.rawSecret;
+          rawSecretBanner.style.display = 'block';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+
+          // Reload page after a delay to reflect new table entry
+          setTimeout(() => { window.location.reload(); }, 6000);
+        } catch (err) {
+          toastErr('Network error: ' + err.message);
+        }
+      });
+
+      // Revoke & Roll handlers
+      document.querySelectorAll('.revoke-key-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const keyId = btn.getAttribute('data-id');
+          if (!confirm('Are you sure you want to revoke this API key? This action is permanent.')) return;
+          try {
+            const res = await fetch(`/api/v1/auth/api-keys/${keyId}/revoke`, { method: 'POST' });
+            if (res.ok) window.location.reload();
+            else toastErr('Failed to revoke key');
+          } catch (e) { toastErr(e.message); }
+        });
+      });
+
+      document.querySelectorAll('.roll-key-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const keyId = btn.getAttribute('data-id');
+          if (!confirm('Rolling this key will invalidate the old secret and generate a new one. Continue?')) return;
+          try {
+            const res = await fetch(`/api/v1/auth/api-keys/${keyId}/roll`, { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+              rawSecretVal.value = data.rawSecret;
+              rawSecretBanner.style.display = 'block';
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else toastErr('Failed to roll key: ' + data.error);
+          } catch (e) { toastErr(e.message); }
+        });
+      });
+    </script>
+</BaseLayout>
+
+<style>
+  .security-page { max-width: 960px; padding: 2rem 1.5rem; }
+  .security-card { padding: 1.75rem; border-radius: 16px; }
+  .security-card--wide { padding: 2rem; }
+  .key-modal-card { width: 100%; max-width: 480px; padding: 2rem; border-radius: 16px; margin: 1rem; }
+  .scope-option { font-size: 0.82rem; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .security-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+  .security-title {
+    font-size: 2.2rem; font-weight: 800; margin: 0 0 0.5rem;
+    background: linear-gradient(135deg, #fff, var(--text-secondary));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .security-section-title { font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0 0 1.25rem; }
+  .security-section-title--identity { display: flex; align-items: center; gap: 8px; }
+  .identity-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-glass); border-radius: 10px;
+  }
+  .security-input {
+    width: 100%; padding: 9px 12px; border-radius: 8px;
+    background: var(--bg-secondary); border: 1px solid var(--border-glass);
+    color: #fff; font-size: 0.88rem;
+  }
+  .security-input--modal { padding: 10px 14px; font-size: 0.9rem; }
+  .security-stack { display: flex; flex-direction: column; gap: 1rem; }
+  .security-stack--modal { gap: 1.1rem; }
+</style>

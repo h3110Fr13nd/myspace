@@ -1,0 +1,233 @@
+/* Hallmark · v2.0.0 | tag index · modern-minimal · catalog-first */
+.tags-page {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+  padding: var(--space-5) var(--space-4) var(--space-8);
+}
+
+.tag-index__hero,
+.tag-index__cloud,
+.tag-index__table-card {
+  padding: var(--space-5);
+}
+
+.tag-index__hero {
+  margin-bottom: var(--space-5);
+}
+
+.tag-index__hero-heading,
+.tag-index__section-heading,
+.tag-index__table-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tag-index__icon {
+  display: inline-flex;
+  color: var(--accent-primary);
+}
+
+.tag-index__title,
+.tag-index__section-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.tag-index__title {
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+}
+
+.tag-index__section-title {
+  font-size: var(--text-xl);
+}
+
+.tag-index__subtitle {
+  max-width: 44rem;
+  margin: var(--space-3) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.tag-index__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tag-index__stat {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.tag-index__stat-value {
+  color: var(--accent-cyan);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tag-index__stat-label,
+.tag-index__caption {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.tag-index__section-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.tag-index__caption {
+  margin: var(--space-2) 0 0;
+}
+
+.tag-index__cloud-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.tag-index__chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: var(--transition-fast);
+}
+
+.tag-index__chip:hover {
+  border-color: var(--accent-primary);
+  background: var(--control-bg-hover);
+  transform: translateY(-1px);
+}
+
+.tag-index__chip:focus-visible,
+.tag-index__table-link:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 3px;
+}
+
+.tag-index__chip:active,
+.tag-index__table-link:active {
+  transform: translateY(1px);
+}
+
+.tag-index__chip--large {
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.tag-index__chip--medium {
+  font-size: var(--text-base);
+  font-weight: 550;
+}
+
+.tag-index__chip--small {
+  font-size: var(--text-sm);
+}
+
+.tag-index__hash {
+  color: var(--accent-cyan);
+}
+
+.ui-badge.tag-index__count {
+  flex: none;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.tag-index__table-card {
+  margin-top: var(--space-5);
+  overflow: hidden;
+}
+
+.tag-index__table-scroll {
+  overflow-x: auto;
+  margin-top: var(--space-4);
+}
+
+.tag-index__table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.tag-index__table th,
+.tag-index__table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tag-index__table th {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.tag-index__table tbody tr:hover {
+  background: var(--surface-subtle);
+}
+
+.tag-index__table-link {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.tag-index__table-link:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.tag-index__samples {
+  max-width: 32rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 40rem) {
+  .tags-page {
+    padding-inline: var(--space-3);
+  }
+
+  .tag-index__hero,
+  .tag-index__cloud,
+  .tag-index__table-card {
+    padding: var(--space-4);
+  }
+
+  .tag-index__title {
+    font-size: var(--text-2xl);
+  }
+
+  .tag-index__samples-col {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tag-index__chip {
+    transition: none;
+  }
+
+  .tag-index__chip:hover {
+    transform: none;
+  }
+}

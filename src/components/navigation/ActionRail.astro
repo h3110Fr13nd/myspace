@@ -1,0 +1,229 @@
+---
+/**
+ * The action rail: every global control that used to live in the header.
+ *
+ * Two instances are rendered at once (one inside the top bar, one floating
+ * over the workspace content) and CSS decides which is visible per chrome
+ * mode, so they are wired by `data-action` rather than by id.
+ *
+ * Variants:
+ *   - 'float' overlays the workspace content, right-aligned above the reading
+ *     column, and fades out after a period of inactivity (chrome mode 'rail').
+ *   - 'bar'   sits inline in the header bar and is always visible.
+ */
+import { UserMenu } from './UserMenu';
+import { getUserIdentity } from '../../lib/userIdentity';
+import { authReturnPath } from '../../lib/authRedirect';
+
+interface Props {
+  currentUser?: string;
+  session?: { userId: string; email?: string; displayName?: string } | null;
+  activeResourceId?: string;
+  activeTitle?: string;
+  activeType?: string;
+  /** 'float' overlays the workspace content; 'bar' sits inline in the top bar. */
+  variant?: 'float' | 'bar';
+  /** Float variant only: hide after inactivity. The chrome mode can veto this. */
+  idleHide?: boolean;
+}
+
+const {
+  currentUser,
+  session,
+  activeResourceId,
+  activeTitle,
+  activeType,
+  variant = 'float',
+  idleHide = true,
+} = Astro.props;
+
+const { currentUser: user, displayName, email, isAuthenticated } = getUserIdentity(currentUser, session);
+const returnTo = authReturnPath(Astro.url.pathname, Astro.url.search);
+const activeAuthPath = Astro.url.pathname === '/login' || Astro.url.pathname === '/register'
+  ? Astro.url.pathname
+  : undefined;
+const isBar = variant === 'bar';
+---
+
+<div
+  class:list={['action-rail', `action-rail--${variant}`]}
+  data-action-rail={idleHide ? '' : undefined}
+  data-rail-variant={variant}
+  role="toolbar"
+  aria-label="Workspace actions"
+>
+  {/* Mobile navigation drawer trigger (hidden on desktop) */}
+  <button
+    class="ui-icon-button ui-icon-button--ghost action-rail__btn action-rail__btn--mobile"
+    data-action="mobile-nav"
+    aria-label="Open navigation menu"
+    title="Open navigation menu"
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </button>
+
+  {/* Create / import */}
+  {isAuthenticated && (
+    <button
+      class="ui-icon-button action-rail__btn action-rail__btn--accent"
+      data-action="create"
+      data-testid="header-create-btn"
+      title="New resource"
+      aria-label="New resource"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      {isBar && <span class="action-rail__label">New</span>}
+    </button>
+  )}
+
+  {/* Search is a direct action in the workspace rail; the header already has its search field. */}
+  {!isBar && (
+    <button
+      type="button"
+      class="ui-icon-button ui-icon-button--ghost action-rail__btn action-rail__btn--search"
+      data-action="search"
+      title="Search workspace"
+      aria-label="Search workspace"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </svg>
+    </button>
+  )}
+
+  {/* Tags — miniaturized to a bare # in the floating rail */}
+  <a
+    href="/tags"
+    class="ui-icon-button ui-icon-button--ghost action-rail__btn"
+    data-action="tags"
+    title="Explore knowledge tags"
+    aria-label="Explore knowledge tags"
+  >
+    <span aria-hidden="true">#</span>
+    {isBar && <span class="action-rail__label">Tags</span>}
+  </a>
+
+  {/* Share — contextual to the active resource */}
+  {isAuthenticated && activeResourceId && (
+    <button
+      class="ui-icon-button ui-icon-button--ghost action-rail__btn"
+      data-action="share"
+      data-resource-id={activeResourceId}
+      data-resource-title={activeTitle || activeResourceId}
+      data-resource-type={activeType}
+      title="Share this resource & manage access"
+      aria-label="Share this resource and manage access"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+      </svg>
+      {isBar && <span class="action-rail__label">Share</span>}
+    </button>
+  )}
+
+  {/* Theme toggle */}
+  <button
+    class="ui-icon-button ui-icon-button--ghost action-rail__btn"
+    data-action="theme"
+    title="Toggle Theme (Dark / Light)"
+    aria-label="Toggle Theme"
+  >
+    <svg data-action="theme-icon" data-theme-icon width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+    </svg>
+    {isBar && <span class="action-rail__label">Theme</span>}
+  </button>
+
+  {/* Keyboard shortcuts guide */}
+  <button
+    class="ui-icon-button ui-icon-button--ghost action-rail__btn"
+    data-action="shortcuts"
+    title="Keyboard Shortcuts (?)"
+    aria-label="Keyboard Shortcuts"
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M8 14h8" />
+    </svg>
+    {isBar && <span class="action-rail__label">Shortcuts</span>}
+  </button>
+
+  {(isAuthenticated || !activeAuthPath) && (
+    <UserMenu
+      client:visible
+      currentUser={user}
+      displayName={displayName}
+      email={email}
+      isAuthenticated={isAuthenticated}
+      returnTo={returnTo}
+    />
+  )}
+</div>
+
+<script>
+  /**
+   * Idle-hide for the floating rail: a single set of window listeners drives
+   * every rail on the page, so ClientRouter navigations cannot leak handlers.
+   * The active chrome mode decides whether hiding applies at all.
+   */
+  import { chromeModeAutoHides, getActiveChromeMode } from '../../lib/chrome';
+
+  const IDLE_MS = 2600;
+
+  function rails(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('[data-action-rail]'));
+  }
+
+  function shouldHide(): boolean {
+    // Only the auto-hiding chrome mode dims the rail; 'rail-pinned' keeps it.
+    if (!chromeModeAutoHides(getActiveChromeMode())) return false;
+
+    // On touch devices the first tap would otherwise only wake an invisible
+    // rail, forcing a second tap to reach the intended action.
+    return !window.matchMedia('(any-pointer: coarse)').matches;
+  }
+
+  function anyExpanded(rail: HTMLElement): boolean {
+    return !!rail.querySelector('[aria-expanded="true"]');
+  }
+
+  function hide(): void {
+    if (!shouldHide()) return;
+    for (const rail of rails()) {
+      if (anyExpanded(rail)) continue;
+      rail.classList.add('is-idle');
+    }
+  }
+
+  function wake(): void {
+    for (const rail of rails()) rail.classList.remove('is-idle');
+    schedule();
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  function schedule(): void {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(hide, IDLE_MS);
+  }
+
+  const w = window as typeof window & { __railIdleBound?: boolean };
+  if (!w.__railIdleBound) {
+    w.__railIdleBound = true;
+    for (const evt of ['mousemove', 'keydown', 'wheel', 'touchstart', 'pointerdown', 'scroll', 'focusin'] as const) {
+      window.addEventListener(evt, wake, { passive: true });
+    }
+  }
+
+  // Switching chrome mode in settings must take effect immediately.
+  document.addEventListener('chrome-changed', wake);
+  document.addEventListener('astro:page-load', wake);
+  wake();
+</script>

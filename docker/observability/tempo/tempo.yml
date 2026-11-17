@@ -1,0 +1,39 @@
+# Tempo — single-binary "monolithic" mode, local backend, short retention.
+# Production: set storage.trace.backend to s3/gcs and add a Tempo Cluster /
+# Query-Frontend. The OTLP ingest path and the Grafana datasource stay identical.
+stream_over_http_enabled: true
+usage_report:
+  reporting_enabled: false
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # Short blocks so a laptop-sized compactor actually reclaims disk.
+  max_block_duration: 5m
+  complete_block_timeout: 15m
+
+compactor:
+  compaction:
+    block_retention: 6h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+    pool:
+      max_workers: 4
+      queue_depth: 64

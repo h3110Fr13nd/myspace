@@ -1,0 +1,106 @@
+---
+import AppPortals from '../components/AppPortals.astro';
+import TopBar from '../components/navigation/TopBar.astro';
+import ResourceHead from '../components/ResourceHead.astro';
+import { ClientRouter } from 'astro:transitions';
+import '../styles/global.css';
+
+export interface Props {
+  title?: string;
+  description?: string;
+  resource?: {
+    id?: string;
+    type?: string;
+    title?: string;
+    metadata?: Record<string, any>;
+    is_public?: boolean;
+  };
+  currentUser?: string;
+  activeResourceId?: string;
+  activeTitle?: string;
+  activeType?: string;
+  showTopBar?: boolean;
+  noMainWrapper?: boolean;
+  bodyClass?: string;
+  /**
+   * Body-class variant. Only `workspace` currently has matching rules (the
+   * chrome-mode rules in chrome.css key off `body.layout--workspace`).
+   *
+   * `contained` is the default and is currently inert — it accurately describes
+   * the page-shell layout, and every route that omits `layoutVariant` gets it.
+   * `canvas` is declared but no route passes it; Canvas Studio uses
+   * `noMainWrapper` and sizes itself. Both are left in place as documented
+   * extension points rather than removed, since narrowing the type would change
+   * the class every non-workspace page emits for no behavioural gain.
+   */
+  layoutVariant?: 'workspace' | 'contained' | 'canvas';
+  canonicalUrl?: string;
+}
+
+const {
+  title,
+  description,
+  resource,
+  currentUser,
+  activeResourceId,
+  activeTitle,
+  activeType,
+  showTopBar = true,
+  noMainWrapper = false,
+  bodyClass = '',
+  layoutVariant = 'contained',
+  canonicalUrl,
+} = Astro.props;
+
+// The bar is rendered on every route. Which chrome the user sees is a
+// preference (`data-chrome`): the workspace can show either this bar or the
+// floating rail, while content routes always use the bar. Keeping one markup
+// tree means switching modes is instant and never duplicates controls.
+const renderTopBar = showTopBar;
+const isWorkspace = layoutVariant === 'workspace';
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <ResourceHead resource={resource} customTitle={title} customDescription={description} canonicalUrl={canonicalUrl} />
+    <ClientRouter />
+    <slot name="extraHead" />
+  </head>
+  <body class={[bodyClass, layoutVariant ? `layout--${layoutVariant}` : ''].filter(Boolean).join(' ')}>
+    {/* First tab stop. Without it a keyboard user has to walk the whole nav
+        (folder tree, toolbar, account menu) to reach the note body. */}
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    {renderTopBar && (
+      <TopBar
+        currentUser={currentUser}
+        session={Astro.locals.session}
+        activeResourceId={activeResourceId}
+        activeTitle={activeTitle}
+        activeType={activeType}
+        workspace={isWorkspace}
+      />
+    )}
+    {noMainWrapper ? (
+      /* Full-bleed routes (workspace shell, canvas studio) own their own layout,
+         so wrapping them in a main would change the box tree. A zero-size
+         anchor gives canvas routes a target; ResourceShell owns the workspace
+         main landmark and skip target. */
+      <Fragment>
+        {!isWorkspace && <span id="main-content" tabindex="-1"></span>}
+        <slot />
+      </Fragment>
+    ) : (
+      <main id="main-content" class="page-shell" tabindex="-1">
+        <slot />
+      </main>
+    )}
+    <AppPortals
+      currentUser={currentUser}
+      session={Astro.locals.session}
+      activeResourceId={activeResourceId}
+      activeTitle={activeTitle}
+      activeType={activeType}
+    />
+  </body>
+</html>

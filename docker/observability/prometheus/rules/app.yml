@@ -1,0 +1,90 @@
+# Recording + alerting rules for the `app` target.
+#
+# Prometheus evaluates and exposes these as series; the `ALERTS` metric is
+# rendered on the Grafana overview dashboard and on the Errors dashboard, and is
+# forwarded to the Alertmanager for delivery (see
+# docker/observability/alertmanager/).
+#
+# Thresholds note: the two degraded-mode alerts below watch counters that are
+# expected to be flat at zero. They are `warning` rather than `critical` because
+# OpenFGA denying closed is the designed failure mode, not a data-loss event — but
+# a non-zero rate means authorization decisions were skipped, which is a
+# security-relevant fact rather than an availability one, and it is alerted on
+# precisely because it is otherwise invisible: a denied check returns a clean 4xx.
+groups:
+  - name: app-red
+    interval: 30s
+    rules:
+      - record: job:http_requests:rate5m
+        expr: sum by (route, method) (rate(foss_http_requests_total{job="app"}[5m]))
+
+      - record: job:http_errors:rate5m
+        expr: sum by (route, method) (rate(foss_http_requests_total{job="app", status=~"5.."}[5m]))
+
+      - record: job:http_duration_seconds:p95
+        expr: |
+          histogram_quantile(0.95, sum by (le, route) (rate(foss_http_request_duration_seconds_bucket{job="app"}[5m])))
+
+  - name: app-alerts
+    interval: 30s
+    rules:
+      - alert: AppDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "mechanical-matter is not answering /api/v1/metrics"
+
+      - alert: AppHighErrorRate
+        expr: |
+          sum(rate(foss_http_requests_total{job="app", status=~"5.."}[5m]))
+            / clamp_min(sum(rate(foss_http_requests_total{job="app"}[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "5xx ratio above 5% for 5m"
+          description: "{{ $value | humanizePercentage }} of app responses are 5xx."
+
+      - alert: AppHighP95Latency
+        expr: job:http_duration_seconds:p95 > 2.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 request latency above 2.5s"
+          description: "p95 is {{ $value | humanizeDuration }}."
+
+      # The authorization engine is unreachable, so every check in this window
+      # denied without being evaluated. A resource the caller is entitled to see
+      # reads as "no permission", which looks identical to a correct refusal —
+      # so this counter is the only way to tell the two apart.
+      - alert: OpenFGADegraded
+        expr: sum(rate(foss_openfga_errors_total{job="app"}[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenFGA unreachable — authorization is failing closed"
+          description: >-
+            {{ $value | printf "%.3f" }} engine calls/s are failing, so ReBAC
+            checks are denying without being evaluated. Anything reported as
+            "not permitted" during this window was not actually a permissions
+            decision. Failing closed is the correct behaviour; the incident is
+            the engine being down.
+
+      # A rejection with no handler, or a throw that escaped a request. These
+      # never became a response, so they appear in no HTTP metric and no log
+      # line with a route label.
+      - alert: AppUnhandledErrors
+        expr: sum(rate(foss_unhandled_errors_total{job="app"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unhandled promise rejections or exceptions in the app"
+          description: >-
+            {{ $value | printf "%.3f" }}/s. Each one logged a stack at level
+            fatal and was counted here; the originating line never reached a
+            route handler. See the Logs Explorer for the stack.

@@ -1,0 +1,470 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+if (currentUser === 'user:anonymous') {
+  return Astro.redirect('/login?redirect=/vault/sync');
+}
+
+const userSlug = currentUser.replace(/^user:/, '');
+---
+
+<BaseLayout
+  title="Sync Knowledge Vault · FOSS Content Workspace"
+  description="Synchronize your Obsidian, Quartz, or markdown vault to your cloud workspace via ZIP archive or recursive directory upload."
+  currentUser={currentUser}
+>
+  <Fragment slot="extraHead">
+    <style>
+      .drop-zone {
+        border: 2px dashed rgba(99, 102, 241, 0.4);
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        text-align: center;
+        background: rgba(15, 23, 42, 0.5);
+        cursor: pointer;
+        transition: all 0.25s ease;
+      }
+      .drop-zone:hover, .drop-zone.dragover {
+        border-color: var(--accent-cyan);
+        background: rgba(0, 242, 254, 0.05);
+        box-shadow: 0 0 25px rgba(0, 242, 254, 0.15);
+      }
+      .stat-pill {
+        display: flex;
+        flex-direction: column;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-glass);
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+      }
+      .stat-val {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, var(--accent-cyan), var(--accent-primary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .stat-lbl {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+      .code-snippet {
+        background: #090d16;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+        color: #e2e8f0;
+        overflow-x: auto;
+        white-space: pre;
+      }
+    </style>
+  </Fragment>
+
+    <div class="container sync-page">
+      <div style="margin-bottom: 2rem;">
+        <div class="sync-heading-row">
+          <div>
+            <h1 class="sync-title">
+              📥 Vault Synchronization Hub
+            </h1>
+            <p style="color: var(--text-secondary); font-size: 0.95rem; margin: 0;">
+              Ingest your local markdown notes, JSON Canvases, and media attachments into your ReBAC-isolated personal vault.
+            </p>
+          </div>
+          <a href="/settings/security" class="glass-button" style="padding: 8px 16px; font-size: 0.85rem;">
+            🔑 Manage API Keys
+          </a>
+        </div>
+      </div>
+
+      <div class="ui-card sync-card sync-card--spaced">
+        <h2 class="sync-section-title">
+          <span>☁️ Browser Upload (ZIP or Folder)</span>
+        </h2>
+
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px;">
+            Target Vault Name (optional)
+          </label>
+          <input 
+            type="text" 
+            id="vault-name-input" 
+            placeholder={`e.g. ${userSlug}_vault`} 
+            class="vault-name-input"
+          />
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+          <div style="font-size: 2.5rem; margin-bottom: 10px;">📦</div>
+          <h3 style="font-size: 1.1rem; font-weight: 600; color: #fff; margin: 0 0 6px 0;">
+            Drag & Drop your Vault ZIP or choose files
+          </h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0 0 1.25rem 0;">
+            Supports Obsidian Vaults, Quartz content trees, .canvas boards, PDFs, and image assets.
+          </p>
+
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <label class="glass-button" style="cursor: pointer; padding: 10px 20px; font-weight: 600; background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(0, 242, 254, 0.3)); border: 1px solid var(--accent-primary);">
+              📁 Choose ZIP Archive
+              <input type="file" id="zip-input" accept=".zip" style="display: none;" />
+            </label>
+
+            <label class="glass-button" style="cursor: pointer; padding: 10px 20px; font-weight: 600; background: var(--bg-glass); border: 1px solid var(--border-glass);">
+              📂 Choose Vault Folder
+              <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Sync Progress & Status -->
+        <div id="sync-progress" style="display: none; margin-top: 1.5rem; padding: 1.5rem; background: rgba(0,0,0,0.3); border-radius: 12px; border: 1px solid var(--border-glass);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <span id="progress-status" style="font-size: 0.9rem; font-weight: 600; color: var(--accent-cyan);">Uploading and processing files...</span>
+            <span id="progress-percent" style="font-size: 0.85rem; color: var(--text-muted);">Please wait</span>
+          </div>
+          <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+            <div id="progress-bar" style="width: 100%; height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-cyan)); border-radius: 4px; animation: pulse 1.5s infinite;"></div>
+          </div>
+        </div>
+
+        <!-- Results Card -->
+        <div id="sync-results" style="display: none; margin-top: 1.5rem;">
+          <div class="sync-success-card">
+            <h3 style="color: #34d399; font-size: 1.15rem; font-weight: 700; margin: 0 0 1rem 0; display: flex; align-items: center; gap: 8px;">
+              <span>✅ Vault Synchronization Successful!</span>
+            </h3>
+
+            <div class="sync-stats">
+              <div class="stat-pill">
+                <span class="stat-val" id="stat-docs">0</span>
+                <span class="stat-lbl">Documents</span>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-val" id="stat-canvases">0</span>
+                <span class="stat-lbl">Canvases</span>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-val" id="stat-assets">0</span>
+                <span class="stat-lbl">Media / PDFs</span>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-val" id="stat-tags">0</span>
+                <span class="stat-lbl">Tags Created</span>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-val" id="stat-public">0</span>
+                <span class="stat-lbl">Public Posts</span>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+              <a href="/" class="glass-button" style="padding: 8px 16px; font-size: 0.85rem; background: var(--accent-cyan); color: #000; font-weight: 700; text-decoration: none;">
+                🏠 View in Workspace
+              </a>
+              <button id="sync-another-btn" class="glass-button" style="padding: 8px 16px; font-size: 0.85rem;">
+                🔄 Sync Another
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Google Drive Direct Sync Section -->
+      <div class="ui-card sync-card sync-card--spaced">
+        <div class="sync-heading-row sync-heading-row--drive">
+          <div>
+            <h2 class="sync-section-title sync-section-title--drive">
+              <span>📁 Google Drive Direct Sync (PDF & Documents)</span>
+            </h2>
+            <p style="color: var(--text-secondary); font-size: 0.88rem; margin: 0;">
+              Connect your Google Drive to sync research papers, books, and PDF notes directly into private subfolders (<code>research/main/</code>).
+            </p>
+          </div>
+
+          <div id="drive-auth-container">
+            <a
+              href="/api/v1/auth/google?drive=true"
+              class="glass-button"
+              id="drive-connect-btn"
+              style="padding: 10px 20px; font-weight: 700; font-size: 0.88rem; background: linear-gradient(135deg, rgba(66, 133, 244, 0.3), rgba(52, 168, 83, 0.3)); border: 1px solid rgba(66, 133, 244, 0.6); color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;"
+            >
+              <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Connect Google Drive</span>
+            </a>
+          </div>
+        </div>
+
+        <div id="drive-browser-box" style="display: none; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 12px; padding: 1.25rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="color: #34d399; font-size: 0.85rem; font-weight: 600;">● Google Drive Connected</span>
+              <span id="drive-folder-name" style="font-size: 0.8rem; color: var(--text-muted);">Root Folder</span>
+            </div>
+            <button
+              id="sync-drive-now-btn"
+              class="glass-button"
+              style="padding: 6px 14px; font-size: 0.82rem; font-weight: 700; background: var(--accent-cyan); color: #000; border: none; cursor: pointer;"
+            >
+              📥 Sync PDFs to research/main/
+            </button>
+          </div>
+
+          <div id="drive-files-list" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+            <div style="color: var(--text-muted); font-size: 0.85rem;">Loading Google Drive files...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLI & Automated Headless Sync Section -->
+      <div class="ui-card sync-card">
+        <h2 class="sync-cli-title">
+          ⚡ Headless & Automated CI/CD Sync (cURL & Python)
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 0.88rem; margin: 0 0 1.25rem 0;">
+          Sync your vault directly from Obsidian git hooks, GitHub Actions, or terminal using your personal API key.
+        </p>
+
+        <div style="margin-bottom: 1.25rem;">
+          <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
+            Terminal / cURL Command
+          </label>
+          <div class="code-snippet">curl -X POST https://blog.example.com/api/v1/vault/sync \
+  -H "Authorization: Bearer &lt;API_KEY&gt;" \
+  -F "zip=@my_vault.zip" \
+  -F "vaultName=my_notes"</div>
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
+            Python / Script Integration
+          </label>
+          <pre class="code-snippet"><code>{`import requests
+
+with open("my_vault.zip", "rb") as f:
+    r = requests.post(
+        "https://blog.example.com/api/v1/vault/sync",
+        headers={"Authorization": "Bearer <API_KEY>"},
+        files={"zip": f},
+        data={"vaultName": "personal_vault"}
+    )
+print(r.json())`}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <script is:inline>
+      const dropZone = document.getElementById('drop-zone');
+      const zipInput = document.getElementById('zip-input');
+      const folderInput = document.getElementById('folder-input');
+      const vaultNameInput = document.getElementById('vault-name-input');
+      const progressEl = document.getElementById('sync-progress');
+      const statusEl = document.getElementById('progress-status');
+      const resultsEl = document.getElementById('sync-results');
+      const syncAnotherBtn = document.getElementById('sync-another-btn');
+      const toastErr = (msg) => (window.showToast ? window.showToast(msg, { tone: 'danger' }) : alert(msg));
+
+      // Drag & Drop
+      ['dragenter', 'dragover'].forEach(name => {
+        dropZone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropZone.classList.add('dragover');
+        });
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        dropZone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('dragover');
+        });
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        if (dt.files && dt.files.length > 0) {
+          handleFilesUpload(dt.files);
+        }
+      });
+
+      zipInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleZipUpload(e.target.files[0]);
+        }
+      });
+
+      folderInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFolderUpload(e.target.files);
+        }
+      });
+
+      syncAnotherBtn?.addEventListener('click', () => {
+        resultsEl.style.display = 'none';
+        dropZone.style.display = 'block';
+        zipInput.value = '';
+        folderInput.value = '';
+      });
+
+      async function handleZipUpload(zipFile) {
+        startProgress('Uploading & extracting ZIP archive...');
+        const formData = new FormData();
+        formData.append('zip', zipFile);
+        const customName = vaultNameInput.value.trim();
+        if (customName) formData.append('vaultName', customName);
+
+        await sendSyncRequest(formData);
+      }
+
+      async function handleFolderUpload(fileList) {
+        startProgress(`Uploading ${fileList.length} files from local folder...`);
+        const formData = new FormData();
+        const customName = vaultNameInput.value.trim();
+        if (customName) formData.append('vaultName', customName);
+
+        for (let i = 0; i < fileList.length; i++) {
+          const file = fileList[i];
+          const relPath = file.webkitRelativePath || file.name;
+          formData.append('files', file);
+          formData.append('paths', relPath);
+        }
+
+        await sendSyncRequest(formData);
+      }
+
+      function startProgress(msg) {
+        dropZone.style.display = 'none';
+        resultsEl.style.display = 'none';
+        progressEl.style.display = 'block';
+        statusEl.innerText = msg;
+      }
+
+      async function sendSyncRequest(formData) {
+        try {
+          const res = await fetch('/api/v1/vault/sync', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await res.json();
+          progressEl.style.display = 'none';
+
+          if (!res.ok) {
+            toastErr('Vault Sync Failed: ' + (data.message || data.error || 'Server error'));
+            dropZone.style.display = 'block';
+            return;
+          }
+
+          // Populate stats
+          const stats = data.stats;
+          document.getElementById('stat-docs').innerText = stats.documentsCount;
+          document.getElementById('stat-canvases').innerText = stats.canvasesCount;
+          document.getElementById('stat-assets').innerText = stats.assetsCount;
+          document.getElementById('stat-tags').innerText = stats.tagsCount;
+          document.getElementById('stat-public').innerText = stats.publicDocsCount;
+
+          resultsEl.style.display = 'block';
+        } catch (err) {
+          progressEl.style.display = 'none';
+          dropZone.style.display = 'block';
+          toastErr('Network or Sync Error: ' + err.message);
+        }
+      }
+
+      // Check Google Drive Connection State
+      async function checkGoogleDriveConnection() {
+        try {
+          const res = await fetch('/api/v1/vault/google-drive/files');
+          const data = await res.json();
+
+          if (data.connected) {
+            document.getElementById('drive-connect-btn').style.display = 'none';
+            const browserBox = document.getElementById('drive-browser-box');
+            browserBox.style.display = 'block';
+
+            const listEl = document.getElementById('drive-files-list');
+            if (data.files && data.files.length > 0) {
+              listEl.innerHTML = data.files.map(f => `
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.83rem;">
+                  <span style="display: flex; align-items: center; gap: 6px; color: #fff;">
+                    <span>${f.isPdf ? '📄' : f.isFolder ? '📁' : '📝'}</span>
+                    <span>${f.name}</span>
+                  </span>
+                  <span style="color: var(--text-muted); font-size: 0.75rem;">
+                    ${f.isFolder ? 'Folder' : (f.size / 1024 / 1024).toFixed(2) + ' MB'}
+                  </span>
+                </div>
+              `).join('');
+            } else {
+              listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No PDF documents found in root folder.</div>';
+            }
+          }
+        } catch { }
+      }
+
+      document.getElementById('sync-drive-now-btn')?.addEventListener('click', async () => {
+        startProgress('Downloading PDFs from Google Drive & ingesting into research/main/...');
+        try {
+          const res = await fetch('/api/v1/vault/google-drive/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folderId: 'root', targetSubFolder: 'research/main', isPrivate: true })
+          });
+          const data = await res.json();
+          progressEl.style.display = 'none';
+
+          if (!res.ok) {
+            toastErr('Google Drive Sync Failed: ' + (data.error || 'Server error'));
+            return;
+          }
+
+          document.getElementById('stat-docs').innerText = 0;
+          document.getElementById('stat-canvases').innerText = 0;
+          document.getElementById('stat-assets').innerText = data.count || 0;
+          document.getElementById('stat-tags').innerText = 1;
+          document.getElementById('stat-public').innerText = 0;
+          resultsEl.style.display = 'block';
+        } catch (err) {
+          progressEl.style.display = 'none';
+          toastErr('Sync error: ' + err.message);
+        }
+      });
+
+      checkGoogleDriveConnection();
+    </script>
+</BaseLayout>
+
+<style>
+  .sync-page { max-width: 900px; padding: 2rem 1.5rem; }
+  .sync-card { padding: 2rem; border-radius: 16px; }
+  .sync-card--spaced { margin-bottom: 2rem; }
+  .sync-heading-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+  .sync-heading-row--drive { margin-bottom: 1.25rem; }
+  .sync-title {
+    font-size: 2.2rem; font-weight: 800; margin: 0 0 0.5rem;
+    background: linear-gradient(135deg, #fff, var(--text-secondary));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .sync-section-title, .sync-cli-title { font-size: 1.25rem; font-weight: 700; color: #fff; }
+  .sync-section-title { margin: 0 0 1.25rem; display: flex; align-items: center; gap: 8px; }
+  .sync-section-title--drive { margin-bottom: 4px; }
+  .sync-cli-title { margin: 0 0 0.5rem; }
+  .sync-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 1.25rem; }
+  .sync-success-card { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 1.5rem; }
+  .vault-name-input {
+    width: 100%; max-width: 380px; padding: 9px 14px; border-radius: 8px;
+    background: var(--bg-secondary); border: 1px solid var(--border-glass);
+    color: #fff; font-size: 0.9rem;
+  }
+</style>

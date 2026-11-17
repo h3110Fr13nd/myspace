@@ -1,0 +1,201 @@
+model
+  schema 1.1
+
+type user
+
+type group
+  relation member: [user, group#member]
+
+type service_account
+
+type tag
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation viewer: [user, group#member, service_account, space#member, user:*] or owner
+  relation read_acl: [user, group#member, service_account] or manage_grants
+  relation denied_viewer: [user, group#member]
+
+type space
+  relation member: [user, group#member]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type folder
+  relation parent_space: [space]
+  relation parent_folder: [folder]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder or editor from parent_space
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder or viewer from parent_space
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder or read_acl from parent_space
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type image
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or owner or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type paper
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or owner or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type pdf
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or owner or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type document
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type blog
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type canvas
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type sheet
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type excalidraw
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type mermaid
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type google_doc
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type google_sheet
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type form
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_folder
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+  relation submitter: [user, group#member, service_account] or viewer
+
+type todo
+  relation parent_folder: [folder]
+  relation tagged: [tag]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation assignee: [user, service_account]
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or assignee
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_folder
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_folder
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type collection
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]
+
+type canvas_node
+  relation parent_canvas: [canvas]
+  relation owner: [user, service_account]
+  relation manage_grants: [user, service_account] or owner
+  relation editor: [user, group#member, service_account, space#member, user:*] or owner or editor from parent_canvas
+  relation viewer: [user, group#member, service_account, space#member, user:*] or editor or viewer from parent_canvas
+  relation read_acl: [user, group#member, service_account] or editor or manage_grants or read_acl from parent_canvas
+  relation denied_viewer: [user, group#member]
+  relation denied_editor: [user, group#member]

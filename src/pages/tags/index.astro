@@ -1,0 +1,186 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { AlertTriangle, Plus, Tag } from 'lucide-react';
+import { Button, EmptyState, Badge } from '../../components/ui';
+import {
+  filterViewableResources,
+  listWorkspaceResourceCandidates,
+} from '../../lib/permissions';
+import '../../styles/tag-index.css';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+let dbError = false;
+let workspaceCandidates: Awaited<ReturnType<typeof listWorkspaceResourceCandidates>> = {
+  rows: [],
+  wildcardViewerIds: [],
+};
+
+try {
+  workspaceCandidates = await listWorkspaceResourceCandidates(currentUser, { includeTimestamps: false });
+} catch (e: any) {
+  console.error('[Tags Index] DB error:', e.message);
+  dbError = true;
+}
+
+// ReBAC Filter: only count tags from resources the user has permission to view.
+// The batched filter evaluates every private row in parallel OpenFGA checks; the
+// previous hand-rolled policy awaited one check per row, which serialised the
+// whole page (>180s for an authenticated user, 27ms anonymous).
+// No `allowFoldersForTree`: this is a listing, and allow-listing containers
+// would bypass the draft/unlisted triage.
+const viewableResources = await filterViewableResources(workspaceCandidates.rows, currentUser, {
+  wildcardViewerIds: workspaceCandidates.wildcardViewerIds,
+});
+
+// Aggregate tags over the viewable set only
+const tagCounts: Record<string, { count: number; resources: string[] }> = {};
+let totalTaggedDocs = 0;
+
+for (const r of viewableResources) {
+  if (r.type === 'folder') continue;
+  const rawTags = r.metadata?.tags;
+  let tagsList: string[] = [];
+  if (Array.isArray(rawTags)) {
+    tagsList = rawTags;
+  } else if (typeof rawTags === 'string') {
+    tagsList = rawTags.split(',').map((t: string) => t.trim()).filter(Boolean);
+  }
+
+  if (tagsList.length > 0) {
+    totalTaggedDocs++;
+    for (const tag of tagsList) {
+      const cleanTag = tag.trim().toLowerCase();
+      if (!cleanTag) continue;
+      if (!tagCounts[cleanTag]) {
+        tagCounts[cleanTag] = { count: 0, resources: [] };
+      }
+      tagCounts[cleanTag].count++;
+      tagCounts[cleanTag].resources.push(r.title || r.id);
+    }
+  }
+}
+
+// Sort tags by frequency (descending) then alphabetically
+const sortedTags = Object.entries(tagCounts).sort((a, b) => {
+  if (b[1].count !== a[1].count) {
+    return b[1].count - a[1].count;
+  }
+  return a[0].localeCompare(b[0]);
+});
+
+const maxCount = Math.max(...Object.values(tagCounts).map((t) => t.count), 1);
+const getTagSize = (count: number) => {
+  const share = count / maxCount;
+  return share >= 0.75 ? 'large' : share >= 0.45 ? 'medium' : 'small';
+};
+---
+
+<BaseLayout
+  title="Tags Index · FOSS Content Workspace"
+  description="Taxonomy index and tag cloud of all discoverable knowledge resources in the workspace."
+  currentUser={currentUser}
+>
+  <div class="container tags-page">
+    <header class="ui-card tag-index__hero">
+      <div class="tag-index__hero-heading">
+        <span class="tag-index__icon"><Tag size={24} aria-hidden="true" /></span>
+        <h1 class="tag-index__title">Explore tags</h1>
+      </div>
+      <p class="tag-index__subtitle">
+        Browse resources by topic. Counts include only resources you can access.
+      </p>
+      {!dbError && (
+        <div class="tag-index__stats" aria-label="Tag summary">
+          <div class="tag-index__stat">
+            <span class="tag-index__stat-value tag-index__stat-value--tags">{sortedTags.length}</span>
+            <span class="tag-index__stat-label">Unique tags</span>
+          </div>
+          <div class="tag-index__stat">
+            <span class="tag-index__stat-value tag-index__stat-value--resources">{totalTaggedDocs}</span>
+            <span class="tag-index__stat-label">Tagged resources</span>
+          </div>
+        </div>
+      )}
+    </header>
+
+    <section class="ui-card tag-index__cloud" aria-labelledby="tag-cloud-title">
+      <div class="tag-index__section-heading">
+        <div>
+          <h2 id="tag-cloud-title" class="tag-index__section-title">Browse by topic</h2>
+          <p class="tag-index__caption">Larger tags appear on more resources.</p>
+        </div>
+      </div>
+
+      {dbError ? (
+        <div class="tag-index__error db-error" role="alert">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span>Tags could not be loaded.</span>
+          <a href="/tags" class="ui-button ui-button--secondary ui-button--sm">Try again</a>
+        </div>
+      ) : sortedTags.length === 0 ? (
+        <EmptyState
+          title={currentUser === 'user:anonymous' ? 'No shared tags yet' : 'No tags yet'}
+          description={currentUser === 'user:anonymous'
+            ? 'Browse shared resources to see what is available.'
+            : 'Create a note and add tags to make it easier to find.'}
+        >
+          <Tag slot="icon" size={24} />
+          <Fragment slot="action">
+            {currentUser === 'user:anonymous'
+              ? <a href="/" class="ui-button ui-button--secondary ui-button--sm">Browse shared resources</a>
+              : <Button variant="primary" size="sm" data-action="create"><Plus size={16} aria-hidden="true" /> Create a note</Button>}
+          </Fragment>
+        </EmptyState>
+      ) : (
+        <div class="tag-index__cloud-grid">
+          {sortedTags.map(([tag, data]) => (
+            <a href={`/tags/${encodeURIComponent(tag)}`} class:list={['tag-index__chip', `tag-index__chip--${getTagSize(data.count)}`]}>
+              <span class="tag-index__hash" aria-hidden="true">#</span>
+              <span>{tag}</span>
+              <Badge tone="info" className="tag-index__count">{data.count}</Badge>
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+
+    {sortedTags.length > 0 && !dbError && (
+      <section class="ui-card tag-index__table-card" aria-labelledby="tag-index-heading">
+        <div class="tag-index__table-heading">
+          <h2 id="tag-index-heading" class="tag-index__section-title">All tags</h2>
+        </div>
+        <div class="tag-index__table-scroll">
+          <table class="tag-index__table">
+            <thead>
+              <tr>
+                <th scope="col">Tag</th>
+                <th scope="col">Resources</th>
+                <th scope="col" class="tag-index__samples-col">Example resources</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedTags.map(([tag, data]) => (
+                <tr>
+                  <td>
+                    <a href={`/tags/${encodeURIComponent(tag)}`} class="tag-index__table-link">
+                      <span aria-hidden="true">#</span>{tag}
+                    </a>
+                  </td>
+                  <td>
+                    <Badge tone="neutral" className="tag-index__count">
+                      {data.count} resource{data.count !== 1 ? 's' : ''}
+                    </Badge>
+                  </td>
+                  <td class="tag-index__samples tag-index__samples-col">
+                    {data.resources.slice(0, 3).join(', ')}{data.resources.length > 3 ? '…' : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+  </div>
+</BaseLayout>

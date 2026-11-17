@@ -1,0 +1,126 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import GoogleMark from '../components/icons/GoogleMark.astro';
+import { CircleAlert, LockKeyhole } from 'lucide-react';
+import { authHref, safeLocalRedirect } from '../lib/authRedirect';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+const errorParam = Astro.url.searchParams.get('error');
+const redirectParam = safeLocalRedirect(Astro.url.searchParams.get('redirect'));
+
+const errorMessages: Record<string, string> = {
+  oauth_cancelled: 'Google Sign-In was cancelled.',
+  oauth_state_invalid: 'Google Sign-In could not be verified. Please try again.',
+  oauth_not_configured: 'Google Sign-In is not configured on this server.',
+  token_exchange_failed: 'Failed to exchange authorization code with Google.',
+  userinfo_failed: 'Could not retrieve user profile from Google.',
+  no_email_scope: 'Google account did not provide an email address.',
+  server_error: 'An internal authentication error occurred. Please try again.',
+};
+---
+
+<BaseLayout
+  title="Sign In · FOSS Content Workspace"
+  description="Sign in to your knowledge workspace to access notes, PDFs, spatial canvases, sync vaults, and manage API keys."
+  currentUser={currentUser}
+>
+    <div class="container auth-page">
+      <div class="ui-card auth-card">
+        <div class="auth-hero">
+          <div class="auth-icon">
+            <LockKeyhole aria-hidden="true" />
+          </div>
+          <h1 class="auth-title">Welcome back</h1>
+          <p class="auth-sub">
+            Sign in to continue to your workspace.
+          </p>
+          {redirectParam !== '/' && (
+            <p class="auth-redirect-hint">After signing in, we’ll return you to the page you requested.</p>
+          )}
+        </div>
+
+        {errorParam && (
+          <div class="auth-error auth-oauth-error" role="alert">
+            <CircleAlert className="auth-error__icon" aria-hidden="true" />
+            <span>{errorMessages[errorParam] || errorParam}</span>
+          </div>
+        )}
+
+        <!-- Google Sign-In Button -->
+        <a 
+          href={`/api/v1/auth/google?redirect=${encodeURIComponent(redirectParam)}`}
+          class="ui-button ui-button--secondary auth-google"
+        >
+          <GoogleMark />
+          Continue with Google
+        </a>
+
+        <!-- Divider -->
+        <div class="auth-divider" aria-hidden="true">
+          <span class="auth-divider__line"></span>
+          <span class="auth-divider__label">or continue with email</span>
+          <span class="auth-divider__line"></span>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <div class="ui-field">
+            <label class="ui-field__label" for="email">Email address</label>
+            <input type="email" id="email" data-testid="email" autocomplete="email" required placeholder="<dummy_mail>" class="ui-input" />
+          </div>
+
+          <div class="ui-field">
+            <div class="auth-field-label-row">
+              <label class="ui-field__label" for="password">Password</label>
+            </div>
+            <input type="password" id="password" data-testid="password" autocomplete="current-password" required placeholder="••••••••" class="ui-input" />
+          </div>
+
+          <div id="form-error" data-testid="error-message" class="auth-error auth-form-error" role="alert" hidden></div>
+
+          <button type="submit" id="submit-btn" data-testid="login-submit" class="ui-button ui-button--primary auth-submit">
+            Sign in with email
+          </button>
+        </form>
+
+        <p class="auth-footer">
+          Don’t have an account? <a href={authHref('/register', redirectParam)}>Create an account</a>
+        </p>
+      </div>
+    </div>
+
+    <script is:inline define:vars={{ redirectParam }}>
+      document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const errorEl = document.getElementById('form-error');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        errorEl.hidden = true;
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Signing in...';
+
+        try {
+          const res = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            errorEl.textContent = data.error || 'Authentication failed.';
+            errorEl.hidden = false;
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Sign in with email';
+          } else {
+            window.location.href = redirectParam || '/';
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error: ' + err.message;
+          errorEl.hidden = false;
+          submitBtn.disabled = false;
+            submitBtn.innerText = 'Sign in with email';
+        }
+      });
+    </script>
+</BaseLayout>

@@ -1,0 +1,45 @@
+---
+/**
+ * Standalone-page navigation. The workspace renders its own rail inside the
+ * content column (see pages/index.astro); every other route gets this
+ * single-line bar so nothing loses navigation now that the header is gone.
+ */
+import BrandBlock from './BrandBlock.astro';
+import ActionRail from './ActionRail.astro';
+import { SearchModal } from '../SearchModal';
+import { authReturnPath } from '../../lib/authRedirect';
+
+interface Props {
+  currentUser?: string;
+  session?: { userId: string; email?: string; displayName?: string } | null;
+  activeResourceId?: string;
+  activeTitle?: string;
+  activeType?: string;
+  /** Workspace bar: chrome mode decides whether it shows as a header or hides. */
+  workspace?: boolean;
+}
+
+const { currentUser, session, activeResourceId, activeTitle, activeType, workspace = false } = Astro.props;
+const returnTo = authReturnPath(Astro.url.pathname, Astro.url.search);
+const isAuthPage = Astro.url.pathname === '/login' || Astro.url.pathname === '/register';
+---
+
+<div class:list={['top-bar', workspace && 'top-bar--workspace']}>
+  <div class="top-bar__left">
+    <BrandBlock compact={!workspace} />
+  </div>
+  <div class="top-bar__center">
+    <SearchModal client:visible currentUser={currentUser} returnTo={returnTo} isAuthPage={isAuthPage} />
+  </div>
+  <div class="top-bar__right">
+    <ActionRail
+      currentUser={currentUser}
+      session={session}
+      activeResourceId={activeResourceId}
+      activeTitle={activeTitle}
+      activeType={activeType}
+      variant="bar"
+      idleHide={false}
+    />
+  </div>
+</div>

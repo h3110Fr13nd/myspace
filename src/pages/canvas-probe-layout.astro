@@ -1,0 +1,33 @@
+---
+import '../styles/global.css';
+import { CanvasEditor } from '../components/canvas/CanvasEditor';
+import type { JsonCanvasSpec } from '../components/canvas/types';
+
+const data: JsonCanvasSpec = {
+  nodes: [
+    { id: 'a', type: 'text', x: 0,    y: 0,   width: 200, height: 100, text: 'A' },
+    { id: 'b', type: 'text', x: 5000, y: 0,   width: 200, height: 100, text: 'B' },
+    { id: 'c', type: 'text', x: 0,    y: 900, width: 200, height: 100, text: 'C' },
+    { id: 'd', type: 'text', x: 700,  y: 400, width: 200, height: 100, text: 'D' },
+    { id: 'tall', type: 'text', x: 0,  y: 1200, width: 300, height: 640, text: 'Tall' },
+    { id: 'wide', type: 'text', x: 0,  y: 2000, width: 820, height: 200, text: 'Wide' },
+    // A group that genuinely encloses two of them.
+    { id: 'ga', type: 'group', x: -20, y: -20, width: 260, height: 140, label: 'Group A' },
+    { id: 'g1', type: 'text', x: 0,   y: 0,   width: 100, height: 100, text: 'G1' },
+    { id: 'g2', type: 'text', x: 120, y: 0,   width: 100, height: 100, text: 'G2' },
+    { id: 'x', type: 'text', x: 2000, y: 2000, width: 200, height: 100, text: 'X' },
+  ],
+  edges: [
+    { id: 'e1', fromNode: 'a', toNode: 'b', toEnd: 'arrow' },
+    { id: 'e2', fromNode: 'a', toNode: 'c', toEnd: 'arrow' },
+    { id: 'e3', fromNode: 'c', toNode: 'd', toEnd: 'arrow' },
+    { id: 'e4', fromNode: 'x', toNode: 'a', toEnd: 'arrow' },
+    { id: 'e5', fromNode: 'b', toNode: 'x', toEnd: 'arrow' },
+    { id: 'e6', fromNode: 'g1', toNode: 'g2', toEnd: 'arrow' },
+  ],
+};
+---
+<html lang="en"><head><meta charset="utf-8" /><title>layout probe</title></head>
+<body style="margin:0;height:100vh"><div id="root" style="height:100vh">
+  <CanvasEditor client:only="react" canvasId="layout-probe" initialData={data} />
+</div></body></html>

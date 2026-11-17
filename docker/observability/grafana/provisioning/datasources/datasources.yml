@@ -1,0 +1,51 @@
+# Grafana datasources — file-provisioned, so `docker compose --profile infra up`
+# yields a working Grafana with zero clicks. UIDs are pinned because dashboards
+# and the Loki derived-field links below reference them.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: foss-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      manageAlerts: true
+      prometheusType: Prometheus
+
+  - name: Loki
+    uid: foss-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 2000
+      # Click a log line's trace id to jump straight into Tempo.
+      derivedFields:
+        - datasourceUid: foss-tempo
+          matcherRegex: '"trace_id":"([a-f0-9]{32})"'
+          name: TraceID
+          url: '$${__value.raw}'
+
+  - name: Tempo
+    uid: foss-tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # Trace -> logs. Matching is by trace id, which is the only reliable join
+      # key: the `service` label in Loki is the compose service name (`app`),
+      # while the span attribute is the pino logger name (`mechanical-matter`).
+      tracesToLogsV2:
+        datasourceUid: foss-loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        filterByTraceID: true
+        filterBySpanID: false
+      tracesToMetrics:
+        datasourceUid: foss-prometheus
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m

@@ -1,0 +1,284 @@
+name: CI/CD — Blog Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-azure-vm
+  # IMPORTANT: never cancel an in-flight deploy. Cancelling the GitHub job leaves
+  # the VM's RunCommand extension still busily building, so the next run-command
+  # invoke fails with Conflict for many minutes. Serialize instead.
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: example-org/foss-content-workspace
+
+jobs:
+  validate:
+    name: Type-check & Build Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Astro type-check
+        run: bun x tsc --noEmit
+      - name: Astro dry build
+        run: bun run build
+
+  build:
+    name: Build & Push Image
+    needs: validate
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Azure VM (Zero-Inbound Run Command)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy via Azure Run Command
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            for attempt in $(seq 1 15); do
+              echo "==> Invoking deploy run command on Azure VM (Attempt $attempt/15)..."
+              if az vm run-command invoke \
+                --resource-group rg-foss-workspace \
+                --name cost-tracker-vm \
+                --command-id RunShellScript \
+                --scripts '
+                  set -e
+                  export HOME=/root
+                  REPO_DIR=/home/azureuser/foss-sync
+
+                  git config --global --add safe.directory "$REPO_DIR"
+
+                  if [ ! -d "$REPO_DIR/.git" ]; then
+                    echo "==> First deploy: cloning repository..."
+                    git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/example-org/foss-content-workspace.git "$REPO_DIR"
+                  fi
+
+                  cd "$REPO_DIR"
+                  echo "==> Pulling latest (shallow)..."
+                  git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/example-org/foss-content-workspace.git
+                  # --depth 1 keeps the VM .git at one commit instead of the
+                  # full history. This repo carries content in every commit, so a
+                  # full clone is hundreds of MB transferred over the wire for
+                  # exactly one tree the deploy only ever reads at HEAD.
+                  git fetch --depth 1 origin main
+                  git reset --hard FETCH_HEAD
+
+                  echo "==> Writing .env..."
+                  printf "%s\n" \
+                    "NODE_ENV=production" \
+                    "PORT=4321" \
+                    "HOST=0.0.0.0" \
+                    "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+                    "OPENFGA_API_URL=http://openfga:8080" \
+                    "OPENFGA_STORE_ID=${{ secrets.OPENFGA_STORE_ID }}" \
+                    "R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}" \
+                    "R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}" \
+                    "R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}" \
+                    "R2_BUCKET_NAME=foss-blog-assets" \
+                    "MEILI_MASTER_KEY=${{ secrets.MEILI_MASTER_KEY }}" \
+                    "MEILISEARCH_URL=http://meilisearch:7700" \
+                    "SEARCH_ENGINE=${{ secrets.SEARCH_ENGINE }}" \
+                    "CLOUDFLARE_TUNNEL_TOKEN=${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}" \
+                    "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" \
+                    "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+                    "GIT_COMMIT_SHA=${{ github.sha }}" \
+                    "GOOGLE_REDIRECT_URI=https://blog.example.com/api/v1/auth/google/callback" \
+                    | tr -d "\r" > "$REPO_DIR/.env"
+
+                  echo "==> Logging into GHCR to pull the prebuilt image..."
+                  echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+                  # --quiet is load-bearing, not cosmetic.
+                  #
+                  # Azure Run Command captures the stdout of this script in a
+                  # bounded buffer and terminates the script when it overflows,
+                  # which it does not report as an error -- `az vm run-command
+                  # invoke` still exits 0 and the workflow goes green. A 300+ MB
+                  # image pull streams tens of KB of per-layer progress, reliably
+                  # overflowed that buffer, and killed the script between the pull
+                  # and the `compose up`. Two deploys in a row reported success
+                  # while the app was still running the previous image. One line
+                  # per layer keeps the total far below the limit.
+                  echo "==> Pulling prebuilt app image (no build on VM)..."
+                  # openfga and its migrate one-shot are pulled alongside the app:
+                  # an engine upgrade is delivered by the tag change, and without
+                  # this the recreate would fall back to whatever v1.5 image is
+                  # already on the box and report a successful upgrade that never
+                  # happened.
+                  docker compose pull --quiet app openfga openfga-migrate
+
+                  echo "==> Bringing up stack (no-build: uses the CI artifact)..."
+                  # The datastore migration is run explicitly, and before the
+                  # engine is recreated, because `openfga-migrate` is a one-shot
+                  # with `restart: "no"` that is already in Exited(0) from a
+                  # previous deploy. `openfga` declares
+                  # `depends_on: openfga-migrate: service_completed_successfully`,
+                  # and compose satisfies that from the stale exit code -- it does
+                  # not re-run the container. So after an engine upgrade the new
+                  # binary would start against the old schema and fail its
+                  # minimum-schema-revision health check, which is a confusing way
+                  # to discover the migration never ran.
+                  #
+                  # Force-recreating the one-shot makes the migration unconditional.
+                  # It is idempotent, so this is safe on every deploy, not just the
+                  # upgrade.
+                  echo "==> Running OpenFGA datastore migration..."
+                  docker compose up -d --force-recreate --no-deps openfga-migrate
+                  echo "==> Waiting for migration to complete..."
+                  MIGRATE_CID="$(docker compose ps -q openfga-migrate)"
+                  for _ in $(seq 1 60); do
+                    MSTATE="$(docker inspect -f "{{.State.Status}}" "$MIGRATE_CID" 2>/dev/null || echo gone)"
+                    if [ "$MSTATE" = "exited" ]; then break; fi
+                    sleep 5
+                  done
+                  MEXIT="$(docker inspect -f "{{.State.ExitCode}}" "$MIGRATE_CID" 2>/dev/null || echo 99)"
+                  if [ "$MEXIT" != "0" ]; then
+                    echo "FAIL: openfga-migrate exited $MEXIT"
+                    docker logs "$MIGRATE_CID" 2>&1 | tail -20
+                    exit 1
+                  fi
+                  echo "==> Migration OK"
+
+                  echo "==> Recreating engine and app..."
+                  docker compose up -d --no-build --force-recreate --remove-orphans openfga app
+                  docker compose --profile tunnel up -d --no-build
+
+                  echo "==> Verifying the container is actually the new image..."
+                  # Post-condition check, because `set -e` cannot catch a script
+                  # the platform killed: there is no exit status to inspect when
+                  # the process never reaches its own error handling. Assert the
+                  # observable outcome instead, so a truncated deploy fails loudly
+                  # here instead of reporting success and leaving the old image
+                  # serving.
+                  #
+                  # NOTE: this block is a single-quoted shell string passed as
+                  # --scripts, so it must contain NO single quotes at all -- not
+                  # even inside comments or inside double-quoted echo arguments,
+                  # because the outer parser sees them first. That shipped once and
+                  # the check compared empty strings, reporting a mismatch against
+                  # an image it never actually read. Use double quotes throughout.
+                  EXPECTED_SHA="${{ github.sha }}"
+                  RUNNING_IMAGE="$(docker inspect workspace_app --format "{{.Config.Image}}")"
+                  RUNNING_STATE="$(docker inspect workspace_app --format "{{.State.Status}}")"
+                  echo "expected sha: [$EXPECTED_SHA]"
+                  echo "running image: [$RUNNING_IMAGE]"
+                  echo "running state: [$RUNNING_STATE]"
+                  case "$RUNNING_IMAGE" in
+                    *"$EXPECTED_SHA"*) ;;
+                    *)
+                      echo "FAIL: workspace_app is running [$RUNNING_IMAGE], expected a tag containing [$EXPECTED_SHA]"
+                      exit 1
+                      ;;
+                  esac
+                  if [ "$RUNNING_STATE" != "running" ]; then
+                    echo "FAIL: workspace_app state is [$RUNNING_STATE], expected [running]"
+                    exit 1
+                  fi
+
+                  docker compose ps
+                  echo "==> Deployment complete!"
+                '; then
+                echo "==> VM Run Command succeeded!"
+                exit 0
+              fi
+              echo "==> Run command busy or conflicted, waiting 30s before retry..."
+              sleep 30
+            done
+            echo "==> Run command failed after 15 attempts."
+            exit 1
+
+      # Independent confirmation that the deploy landed.
+      #
+      # A separate run-command, deliberately outside the deploy script: the
+      # failure mode being caught is the deploy script being killed by Run
+      # Command's output buffer before it reaches its own checks, so a check
+      # living inside that script is exactly the thing that cannot be relied on.
+      # This one emits almost no output, so it cannot overflow the same buffer,
+      # and it turns a silently-failed deploy into a red build.
+      - name: Verify deployed image
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            for attempt in $(seq 1 10); do
+              if az vm run-command invoke \
+                --resource-group rg-foss-workspace \
+                --name cost-tracker-vm \
+                --command-id RunShellScript \
+                --scripts '
+                  set -e
+                  # Double quotes, not single: this script is inside `--scripts '"'"'...'"'"'`,
+                  # so a single-quoted `--format` would close the block early and
+                  # every comparison below would run against empty strings.
+                  IMAGE="$(docker inspect workspace_app --format "{{.Config.Image}}")"
+                  STATE="$(docker inspect workspace_app --format "{{.State.Status}}")"
+                  echo "running: $IMAGE"
+                  echo "state: $STATE"
+                  case "$IMAGE" in
+                    *'"${{ github.sha }}"'*) ;;
+                    *) echo "MISMATCH"; exit 1 ;;
+                  esac
+                  [ "$STATE" = "running" ] || { echo "NOT RUNNING"; exit 1; }
+                  echo "VERIFIED"
+                ' > /tmp/verify.out 2>&1; then
+                cat /tmp/verify.out
+                echo "==> Deploy verified."
+                exit 0
+              fi
+              echo "==> Verify attempt $attempt/10 did not confirm; retrying..."
+              sleep 20
+            done
+            cat /tmp/verify.out 2>/dev/null || true
+            echo "==> Could not confirm the deployed image. Treat the deploy as FAILED."
+            exit 1

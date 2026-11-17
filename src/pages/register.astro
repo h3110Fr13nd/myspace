@@ -1,0 +1,125 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import GoogleMark from '../components/icons/GoogleMark.astro';
+import { UserPlus } from 'lucide-react';
+import { authHref, safeLocalRedirect } from '../lib/authRedirect';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+const redirectParam = safeLocalRedirect(Astro.url.searchParams.get('redirect'));
+---
+
+<BaseLayout
+  title="Create Account · FOSS Content Workspace"
+  description="Create a personal workspace account with automatic root vault provisioning, multi-provider auth, and OpenFGA ReBAC permissions."
+  currentUser={currentUser}
+>
+    <div class="container auth-page">
+      <div class="ui-card auth-card">
+        <div class="auth-hero">
+          <div class="auth-icon">
+            <UserPlus aria-hidden="true" />
+          </div>
+          <h1 class="auth-title">Create your account</h1>
+          <p class="auth-sub">
+            Save notes, organize research, and share it with others.
+          </p>
+          {redirectParam !== '/' && (
+            <p class="auth-redirect-hint">After creating your account, we’ll return you to the page you requested.</p>
+          )}
+        </div>
+
+        <!-- Google Sign-Up Button -->
+        <a 
+          href={`/api/v1/auth/google?redirect=${encodeURIComponent(redirectParam)}`}
+          class="ui-button ui-button--secondary auth-google"
+        >
+          <GoogleMark />
+          Sign up with Google
+        </a>
+
+        <!-- Divider -->
+        <div class="auth-divider" aria-hidden="true">
+          <span class="auth-divider__line"></span>
+          <span class="auth-divider__label">or register with email</span>
+          <span class="auth-divider__line"></span>
+        </div>
+
+        <form id="register-form" class="auth-form">
+          <div class="ui-field">
+            <label class="ui-field__label" for="displayName">Display name</label>
+            <input type="text" id="displayName" data-testid="display-name" autocomplete="name" required placeholder="Your name" class="ui-input" />
+          </div>
+
+          <div class="ui-field">
+            <label class="ui-field__label" for="email">Email address</label>
+            <input type="email" id="email" data-testid="email" autocomplete="email" required placeholder="<dummy_mail>" class="ui-input" />
+          </div>
+
+          <div class="ui-field">
+            <label class="ui-field__label" for="password">Password (at least 6 characters)</label>
+            <input type="password" id="password" data-testid="password" autocomplete="new-password" required minlength="6" placeholder="••••••••" class="ui-input" />
+          </div>
+
+          <div class="ui-field">
+            <label class="ui-field__label" for="confirmPassword">Confirm password</label>
+            <input type="password" id="confirmPassword" data-testid="confirm-password" autocomplete="new-password" required minlength="6" placeholder="••••••••" class="ui-input" />
+          </div>
+
+          <div id="form-error" data-testid="error-message" class="auth-error auth-form-error" role="alert" hidden></div>
+
+          <button type="submit" id="submit-btn" data-testid="register-submit" class="ui-button ui-button--primary auth-submit">
+            Create account
+          </button>
+        </form>
+
+        <p class="auth-footer">
+          Already have an account? <a href={authHref('/login', redirectParam)}>Sign In</a>
+        </p>
+      </div>
+    </div>
+
+    <script is:inline define:vars={{ redirectParam }}>
+      document.getElementById('register-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const displayName = document.getElementById('displayName').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        const errorEl = document.getElementById('form-error');
+        const submitBtn = document.getElementById('submit-btn');
+
+        errorEl.hidden = true;
+
+        if (password !== confirmPassword) {
+          errorEl.textContent = 'Passwords do not match. Please verify and try again.';
+          errorEl.hidden = false;
+          return;
+        }
+
+        submitBtn.disabled = true;
+          submitBtn.innerText = 'Creating account…';
+
+        try {
+          const res = await fetch('/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, displayName }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            errorEl.textContent = data.error || 'Registration failed.';
+            errorEl.hidden = false;
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Create account';
+          } else {
+            window.location.href = redirectParam || '/';
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error: ' + err.message;
+          errorEl.hidden = false;
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Create account';
+        }
+      });
+    </script>
+</BaseLayout>

@@ -1,0 +1,47 @@
+# Dependencies & Virtualenvs
+node_modules/
+.venv/
+.pnpm-store/
+
+# Build artifacts & caches
+dist/
+.astro/
+.cache/
+
+# Git & IDE configs
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+.vscode/
+.idea/
+
+# Local data, storage, temp & logs
+storage/
+temp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment & local secrets
+.env
+.env.*
+!.env.example
+
+# Documentation & non-runtime assets
+inspiration/
+docker/
+k8s/
+content/
+public/pdfs/
+plan/
+tests/
+playwright-report/
+test-results/
+temp/
+.worktrees/
+
+# OS specific
+.DS_Store
+Thumbs.db

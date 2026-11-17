@@ -1,0 +1,234 @@
+---
+/**
+ * The workspace shell: brand + search + explorer on the left, the resource
+ * body in the middle, contextual panels (graph, table of contents, backlinks)
+ * on the right, plus the floating action rail.
+ *
+ * Extracted from pages/index.astro so that a folder or a tag can be read like
+ * any other resource instead of getting a bespoke page. The markup, ids and
+ * class names are unchanged, so the existing stylesheet and the sidebar
+ * collapse state keep working.
+ *
+ * Slots:
+ *   explorer  the resource tree for the left column
+ *   content   the resource body (a note, a viewer, or a generated listing)
+ *   context   the right-hand panels; omitted entirely when `showContext` is off
+ */
+import BrandBlock from './navigation/BrandBlock.astro';
+import ActionRail from './navigation/ActionRail.astro';
+import { SearchModal } from './SearchModal';
+import { getUserIdentity } from '../lib/userIdentity';
+import { authReturnPath } from '../lib/authRedirect';
+
+interface Props {
+  currentUser?: string;
+  session?: { userId: string; email?: string; displayName?: string } | null;
+  /** Active resource, used by the rail's contextual share control. */
+  activeResourceId?: string;
+  activeTitle?: string;
+  activeType?: string;
+  /** Render the right-hand column. Off for narrow/listing-only contexts. */
+  showContext?: boolean;
+}
+
+const {
+  currentUser,
+  session,
+  activeResourceId,
+  activeTitle,
+  activeType,
+  showContext = true,
+} = Astro.props;
+const { displayName, email, isAuthenticated } = getUserIdentity(currentUser, session);
+const returnTo = authReturnPath(Astro.url.pathname, Astro.url.search);
+---
+
+<div class="workspace-container">
+  <div class="workspace-grid">
+
+    <!-- LEFT COLUMN: Brand + Search + resource explorer -->
+    <aside class="sidebar-left">
+      <div id="sidebar-left-content" class="sidebar-left-inner custom-scrollbar">
+        <!-- Mobile Tap-to-Expand Header -->
+        <button
+          id="sidebar-left-mobile-header"
+          class="sidebar-left-mobile-header"
+          type="button"
+          aria-controls="sidebar-left-content"
+          aria-expanded="false"
+        >
+          <span>Vault explorer</span>
+          <span class="mobile-expand-icon" aria-hidden="true">▾</span>
+        </button>
+
+        {/* Hidden in the 'header' chrome mode, where the bar owns these */}
+        <div class="sidebar-chrome">
+          <BrandBlock />
+
+          <div class="sidebar-search">
+            <SearchModal client:visible currentUser={currentUser} returnTo={returnTo} />
+          </div>
+        </div>
+
+        <div class="vault-head">
+          <div class="vault-head__label">{isAuthenticated ? 'Your workspace' : 'Public workspace'}</div>
+          <h3 class="vault-head__user">{displayName || 'Browse shared resources'}</h3>
+          {email && <div class="vault-head__email">{email}</div>}
+        </div>
+
+        <slot name="explorer" />
+      </div>
+
+      <!-- Sidebar Collapse Toggle Button (Desktop) -->
+      <button
+        id="sidebar-left-toggle"
+        class="sidebar-toggle-btn"
+        type="button"
+        title="Collapse explorer ([)"
+        aria-label="Collapse explorer ([)"
+        aria-controls="sidebar-left-content"
+        aria-expanded="true"
+      >
+        <svg class="sidebar-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      </button>
+    </aside>
+
+    <!-- MIDDLE COLUMN: the resource itself -->
+    <main id="main-content" tabindex="-1" class="center-content ui-card">
+      <slot name="content" />
+    </main>
+
+    {showContext && (
+      /* RIGHT COLUMN: Contextual Graph View, Table of Contents, & Backlinks */
+      <aside class="sidebar-right custom-scrollbar">
+        <slot name="context" />
+      </aside>
+    )}
+
+    {/* Floating action rail. It sits outside .center-content on purpose: that
+        card uses backdrop-filter, which makes it a containing block for fixed
+        positioning and would anchor the rail to the card, not the viewport. */}
+    <ActionRail
+      currentUser={currentUser}
+      session={session}
+      activeResourceId={activeResourceId}
+      activeTitle={activeTitle}
+      activeType={activeType}
+    />
+
+  </div>
+</div>
+
+<script>
+  import { FOCUS_WORKSPACE_SEARCH_EVENT } from '../lib/workspaceSearchEvents';
+
+  /**
+   * Shell-level interactivity: explorer collapse (persisted) and reader mode.
+   * Reading affordances (progress bar, back to top, hash scrolling) belong to
+   * the page, not the shell.
+   */
+  function setupShell() {
+    const shortcutWindow = window as typeof window & { __workspaceExplorerShortcutBound?: boolean };
+    if (!shortcutWindow.__workspaceExplorerShortcutBound) {
+      shortcutWindow.__workspaceExplorerShortcutBound = true;
+      window.addEventListener('keydown', (event) => {
+        const target = event.target;
+        const isEditing = target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]');
+        if (event.key !== '[' || event.ctrlKey || event.metaKey || event.altKey || isEditing) return;
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+
+        const toggle = document.getElementById('sidebar-left-toggle');
+        if (!toggle) return;
+        event.preventDefault();
+        toggle.click();
+      });
+    }
+
+    const bridgeWindow = window as typeof window & { __workspaceSearchBridgeBound?: boolean };
+    if (!bridgeWindow.__workspaceSearchBridgeBound) {
+      bridgeWindow.__workspaceSearchBridgeBound = true;
+      window.addEventListener(FOCUS_WORKSPACE_SEARCH_EVENT, () => {
+        const topbarSearch = document.querySelector<HTMLElement>('.top-bar__center .search-input-shell');
+        if (topbarSearch?.getClientRects().length) return;
+
+        const sidebar = document.querySelector<HTMLElement>('.sidebar-left');
+        if (!sidebar?.querySelector('.search-input-shell')) return;
+
+        const grid = document.querySelector<HTMLElement>('.workspace-grid');
+        if (grid?.classList.contains('sidebar-left-collapsed')) {
+          grid.classList.remove('sidebar-left-collapsed');
+          const toggle = document.getElementById('sidebar-left-toggle');
+          toggle?.setAttribute('aria-expanded', 'true');
+          toggle?.setAttribute('aria-label', 'Collapse explorer ([)');
+          if (toggle instanceof HTMLElement) toggle.title = 'Collapse explorer ([)';
+          try { localStorage.setItem('workspace_sidebar_collapsed', 'false'); } catch {}
+        }
+
+        if (window.matchMedia('(max-width: 768px)').matches) {
+          sidebar.classList.add('is-expanded-mobile');
+          const mobileHeader = document.getElementById('sidebar-left-mobile-header');
+          mobileHeader?.setAttribute('aria-expanded', 'true');
+          const icon = mobileHeader?.querySelector('.mobile-expand-icon');
+          if (icon) icon.textContent = '▴';
+        }
+      });
+    }
+
+    const workspaceGrid = document.querySelector('.workspace-grid');
+    if (!workspaceGrid || workspaceGrid.dataset.wsInited) return;
+    workspaceGrid.dataset.wsInited = '1';
+
+    const toggleBtn = document.getElementById('sidebar-left-toggle');
+
+    function updateSidebarState(collapsed: boolean) {
+      if (!workspaceGrid || !toggleBtn) return;
+      workspaceGrid.classList.toggle('sidebar-left-collapsed', collapsed);
+      toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+      toggleBtn.setAttribute('aria-label', collapsed ? 'Expand explorer ([)' : 'Collapse explorer ([)');
+      toggleBtn.title = collapsed ? 'Expand explorer ([)' : 'Collapse explorer ([)';
+      try {
+        localStorage.setItem('workspace_sidebar_collapsed', collapsed ? 'true' : 'false');
+      } catch (e) {}
+    }
+
+    try {
+      if (localStorage.getItem('workspace_sidebar_collapsed') === 'true') {
+        updateSidebarState(true);
+      }
+    } catch (e) {}
+
+    toggleBtn?.addEventListener('click', () => {
+      const isCollapsed = workspaceGrid?.classList.contains('sidebar-left-collapsed') || false;
+      updateSidebarState(!isCollapsed);
+    });
+
+    const mobileHeader = document.getElementById('sidebar-left-mobile-header');
+    const sidebarLeft = document.querySelector('.sidebar-left');
+    mobileHeader?.addEventListener('click', () => {
+      const expanded = sidebarLeft?.classList.toggle('is-expanded-mobile') ?? false;
+      mobileHeader.setAttribute('aria-expanded', String(expanded));
+      const icon = mobileHeader.querySelector('.mobile-expand-icon');
+      if (icon) icon.textContent = sidebarLeft?.classList.contains('is-expanded-mobile') ? '▴' : '▾';
+    });
+
+    // Reader mode hides both sidebars; the control lives in the note header.
+    const readerBtn = document.getElementById('reader-mode-toggle');
+    if (readerBtn) {
+      const syncReaderMode = () => {
+        const isActive = document.body.classList.contains('reader-mode-active');
+        readerBtn.classList.toggle('ui-icon-button--active', isActive);
+        readerBtn.setAttribute('aria-pressed', String(isActive));
+      };
+      syncReaderMode();
+      readerBtn.onclick = () => {
+        document.body.classList.toggle('reader-mode-active');
+        syncReaderMode();
+      };
+    }
+  }
+
+  setupShell();
+  document.addEventListener('astro:page-load', setupShell);
+</script>

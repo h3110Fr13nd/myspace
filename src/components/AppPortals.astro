@@ -1,0 +1,153 @@
+---
+/**
+ * Global overlay host: the share / create / shortcuts modals, the toast
+ * channel, and the mobile navigation drawer.
+ *
+ * These used to be mounted by Header.astro. With the header removed they must
+ * be mounted by the layout itself, otherwise every page silently loses those
+ * features — so this component renders unconditionally, including on routes
+ * that pass showHeader={false}.
+ */
+import { ShareModal } from './ShareModal';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { CreateResourceModal } from './CreateResourceModal';
+import { MobileNavDrawer } from './navigation/MobileNavDrawer';
+import { Toaster } from './ui/Toast';
+import { getUserIdentity } from '../lib/userIdentity';
+import { authReturnPath } from '../lib/authRedirect';
+
+interface Props {
+  currentUser?: string;
+  session?: { userId: string; email?: string; displayName?: string } | null;
+  activeResourceId?: string;
+  activeTitle?: string;
+  activeType?: string;
+}
+
+const { currentUser, session, activeResourceId, activeTitle, activeType = 'document' } = Astro.props;
+const { currentUser: user, displayName, email, isAuthenticated } = getUserIdentity(currentUser, session);
+const returnTo = authReturnPath(Astro.url.pathname, Astro.url.search);
+---
+
+<MobileNavDrawer
+  client:load
+  currentUser={user}
+  displayName={displayName}
+  email={email}
+  isAuthenticated={isAuthenticated}
+  returnTo={returnTo}
+  activeResourceId={activeResourceId}
+  activeTitle={activeTitle}
+  activeType={activeType}
+/>
+
+<ShareModal client:idle initialResourceId={activeResourceId} initialTitle={activeTitle} initialType={activeType} />
+
+<CreateResourceModal client:idle currentUser={user} defaultParentFolder={activeResourceId?.startsWith('folder:') ? activeResourceId : undefined} />
+
+<KeyboardShortcutsModal client:idle />
+
+<Toaster client:idle />
+
+<script>
+  // Canonical prefs logic lives in src/lib/prefs.ts — import it instead of
+  // re-implementing read/write/apply locally (single source of truth).
+  import { readPrefs, writePrefs, applyPrefs } from '../lib/prefs';
+  import { openCreateResourceModal } from '../lib/createResourceEvents';
+  import { requestWorkspaceSearchFocus } from '../lib/workspaceSearchEvents';
+
+  function setupGlobalControls() {
+    // Every control is addressed by data-action because a control can exist in
+    // more than one rail at once (header bar and floating rail).
+    const all = (action: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(`[data-action="${action}"]`));
+
+    // Mobile navigation drawer
+    for (const btn of all('mobile-nav')) {
+      btn.onclick = () => {
+        (window as typeof window & { __mobileNavOpen?: boolean }).__mobileNavOpen = true;
+        window.dispatchEvent(new CustomEvent('open-mobile-nav'));
+      };
+    }
+
+    // Focus the existing workspace search. The shell expands its sidebar on
+    // mobile and in collapsed desktop mode before the SearchModal receives it.
+    for (const btn of all('search')) {
+      btn.onclick = requestWorkspaceSearchFocus;
+    }
+
+    // Theme toggle (may be rendered in either rail)
+    const themeButtons = all('theme');
+    const themeIcons = Array.from(document.querySelectorAll<SVGElement>('[data-theme-icon]'));
+    if (themeButtons.length) {
+      const updateIcons = (theme: string) => {
+        for (const icon of themeIcons) icon.classList.toggle('is-light-theme', theme === 'light');
+      };
+
+      const syncThemeIcons = () => updateIcons(document.documentElement.getAttribute('data-theme') || readPrefs().theme);
+      syncThemeIcons();
+
+      for (const btn of themeButtons) {
+        btn.onclick = () => {
+          const active = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          const next = active === 'light' ? 'dark' : 'light';
+          const p = Object.assign({}, readPrefs(), { theme: next });
+          writePrefs(p);
+          applyPrefs(p);
+          updateIcons(next);
+        };
+      }
+
+    }
+
+    // Share (contextual to the active resource)
+    for (const btn of all('share')) {
+      btn.onclick = () => {
+        const resourceId = btn.getAttribute('data-resource-id') || '';
+        const title = btn.getAttribute('data-resource-title') || '';
+        const type = btn.getAttribute('data-resource-type') || 'document';
+        window.dispatchEvent(new CustomEvent('open-share-modal', {
+          detail: { resourceId, title, type }
+        }));
+      };
+    }
+
+    // Create / import
+    for (const btn of all('create')) {
+      btn.onclick = () => {
+        openCreateResourceModal({ mode: 'create' });
+      };
+    }
+
+    // Keyboard shortcuts guide
+    for (const btn of all('shortcuts')) {
+      btn.onclick = () => window.dispatchEvent(new CustomEvent('open-keyboard-shortcuts'));
+    }
+  }
+
+  const searchWindow = window as typeof window & { __workspaceSearchShortcutsBound?: boolean };
+  if (!searchWindow.__workspaceSearchShortcutsBound) {
+    searchWindow.__workspaceSearchShortcutsBound = true;
+    window.addEventListener('keydown', (event) => {
+      const target = event.target as HTMLElement | null;
+      const isEditing = target?.isContentEditable || Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
+      const opensSearch =
+        (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditing) ||
+        ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k');
+      if (!opensSearch) return;
+
+      event.preventDefault();
+      requestWorkspaceSearchFocus();
+    });
+  }
+
+  // Define global helpers
+  (window as any).openShareModal = (opts: { resourceId: string; title?: string; type?: string }) => {
+    window.dispatchEvent(new CustomEvent('open-share-modal', { detail: opts }));
+  };
+
+  (window as any).openCreateResourceModal = openCreateResourceModal;
+
+  setupGlobalControls();
+  document.addEventListener('astro:page-load', setupGlobalControls);
+</script>

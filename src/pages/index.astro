@@ -1,0 +1,543 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ContentMeta from '../components/ContentMeta.astro';
+import { FolderTree } from '../components/FolderTree';
+import { GraphContainer } from '../components/GraphContainer';
+import { TableOfContents } from '../components/TableOfContents';
+import { Backlinks } from '../components/Backlinks';
+import ResourceContentRenderer from '../components/ResourceContentRenderer.astro';
+import { WikilinkPreview } from '../components/WikilinkPreview';
+import { ReadToggle } from '../components/ReadToggle';
+import ResourceShell from '../components/ResourceShell.astro';
+import { query } from '../lib/db';
+import { renderMarkdownWithEmbedsAsync } from '../lib/renderEngine';
+import {
+  filterViewableResources,
+  listWorkspaceResourceCandidates,
+  WORKSPACE_LIST_METADATA_FIELDS,
+} from '../lib/permissions';
+import { checkPermission } from '../lib/openfga';
+import { resolveResourceType, canWysiwygEdit } from '../lib/registry/resourceRegistry';
+import { buildResourcePath } from '../lib/resourceUrls';
+import { buildTreePreview } from '../lib/workspace/treeBuilder';
+import { buildBreadcrumbs } from '../lib/workspace/breadcrumbs';
+import { buildBacklinks, buildSidebarGraphData } from '../lib/workspace/graphTopology';
+import { resolveActiveDoc, resolveDocumentFilePath } from '../lib/workspace/documentResolver';
+import { stripLeadingDuplicateTitle } from '../lib/render/markdownTitle';
+import { BookOpen, Eye, FolderOpen, LockKeyhole, Pencil, Share2, Plus, LogIn } from 'lucide-react';
+import 'katex/dist/katex.min.css';
+import * as fs from 'fs';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+// Fetch all resource types from PostgreSQL and apply ReBAC filter
+let rawResources: any[] = [];
+try {
+  const dbRes = await listWorkspaceResourceCandidates(currentUser, {
+    includeTimestamps: false,
+    metadataFields: WORKSPACE_LIST_METADATA_FIELDS,
+  });
+  rawResources = await filterViewableResources(
+    dbRes.rows,
+    currentUser,
+    {
+      allowFoldersForTree: true,
+      wildcardViewerIds: dbRes.wildcardViewerIds,
+    }
+  );
+} catch (error) {
+  console.error('[workspace] Failed to list resources:', error);
+  return new Response('Workspace temporarily unavailable', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' },
+  });
+}
+
+// Build Folder Tree Hierarchy (hiding unlisted from sidebar tree for non-owners and pruning empty folders)
+
+// Find active document from middleware or ?doc= query param
+const docId = Astro.locals?.docId || Astro.url.searchParams.get('doc');
+const isEditMode = Astro.url.searchParams.get('edit') === 'true';
+
+let activeDoc: any = resolveActiveDoc(rawResources, docId);
+const activeTitleAnchorId = activeDoc?.title
+  ?.toLowerCase()
+  .replace(/<[^>]+>/g, '')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/(^-|-$)/g, '');
+
+// A requested resource that is missing or not visible must never fall through
+// to the unrelated default article. That fallback looked like a successful page
+// load and made private/missing links impossible to diagnose.
+if (docId && !activeDoc) {
+  if (currentUser === 'user:anonymous') {
+    const loginUrl = new URL('/login', Astro.url);
+    loginUrl.searchParams.set('redirect', `${Astro.url.pathname}${Astro.url.search}`);
+    return Astro.redirect(`${loginUrl.pathname}${loginUrl.search}`);
+  }
+  return new Response('Resource not found', { status: 404 });
+}
+
+if (activeDoc && docId) {
+  const cleanId = decodeURIComponent(docId);
+  const canonicalSlug = activeDoc.metadata?.slug || activeDoc.id;
+  if (cleanId !== canonicalSlug && cleanId !== activeDoc.id) {
+    return Astro.redirect(`/?doc=${encodeURIComponent(canonicalSlug)}`, 301);
+  }
+}
+
+// Determine whether the current user may edit the active document.
+// Owners can always edit; everyone else must hold the ReBAC `editor` relation.
+let canEditActiveDoc = false;
+if (activeDoc && isEditMode) {
+  if (activeDoc.owner_id === currentUser) {
+    canEditActiveDoc = true;
+  } else if (currentUser && currentUser !== 'user:anonymous') {
+    try {
+      canEditActiveDoc = await checkPermission({ user: currentUser, relation: 'editor', object: activeDoc.id });
+    } catch {
+      canEditActiveDoc = false;
+    }
+  }
+}
+const effectiveEditMode = isEditMode && canEditActiveDoc;
+
+if (!activeDoc) {
+  activeDoc = rawResources.find((r) => r.type === 'document' || r.type === 'paper' || r.type === 'blog');
+}
+const noAccessibleDocument = !activeDoc;
+if (activeDoc) {
+  try {
+    const details = await query('SELECT metadata FROM resources WHERE id = $1 LIMIT 1', [activeDoc.id]);
+    if (!details.rows?.[0]) {
+      return new Response('Resource not found', { status: 404 });
+    }
+    activeDoc = { ...activeDoc, metadata: details.rows[0].metadata || {} };
+  } catch (error) {
+    console.error('[workspace] Failed to load active resource metadata:', error);
+    return new Response('Workspace temporarily unavailable', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' },
+    });
+  }
+}
+if (!activeDoc) {
+  activeDoc = {
+    id: 'workspace:empty',
+    type: 'document',
+    title: 'No accessible documents',
+    metadata: {},
+  };
+}
+
+const activeDocId = activeDoc.id;
+const folderTreeData = buildTreePreview(rawResources, currentUser, activeDocId);
+const graphData = buildSidebarGraphData(rawResources, activeDocId);
+const canonicalResourcePath = noAccessibleDocument ? '/' : buildResourcePath(activeDoc, activeDoc.path);
+const isFolder = activeDoc.type === 'folder';
+const activeParentFolder = rawResources.find(
+  (resource) => resource.id === activeDoc.parent_id && (resource.type === 'folder' || resource.type === 'space')
+);
+const activeFolderId = isFolder ? activeDoc.id : activeParentFolder?.id;
+const activeFolderTitle = isFolder ? activeDoc.title : activeParentFolder?.title;
+const isCanvas = activeDoc.type === 'canvas';
+const isPdf = activeDoc.type === 'pdf';
+const isImage = activeDoc.type === 'image';
+const isGoogleDrive =
+  activeDoc.type === 'drive' ||
+  activeDoc.type?.startsWith('drive_') ||
+  activeDoc.id?.startsWith('drive:') ||
+  activeDoc.type === 'google_doc' ||
+  activeDoc.type === 'google_sheet' ||
+  activeDoc.id?.startsWith('google_doc:') ||
+  activeDoc.id?.startsWith('google_sheet:');
+
+// Detect research papers: either explicit 'paper' type, or PDFs tagged as research papers
+const isPaper = activeDoc.type === 'paper' ||
+  (activeDoc.type === 'pdf' && (
+    activeDoc.metadata?.entityType === 'paper' ||
+    Array.isArray(activeDoc.metadata?.tags) && activeDoc.metadata.tags.includes('research-paper')
+  ));
+
+const canWysiwygEditActive = canWysiwygEdit(activeDoc);
+
+let docBodyHtml = '';
+let rawFileContent = '';
+
+if (isFolder) {
+  // Folders are first-class resources with their own self-contained page
+  // (prose index doc or listing grid) — never rendered inside the workspace chrome.
+  return Astro.redirect(canonicalResourcePath);
+} else if (!noAccessibleDocument && !isPdf && !isImage && !isGoogleDrive && !isCanvas) {
+  const targetFilePath = resolveDocumentFilePath(activeDoc);
+  if (targetFilePath) {
+    rawFileContent = fs.readFileSync(targetFilePath, 'utf-8');
+    docBodyHtml = await renderMarkdownWithEmbedsAsync(
+      stripLeadingDuplicateTitle(rawFileContent, activeDoc.title),
+      currentUser,
+      0
+    );
+  } else {
+    // Imported and seeded resources may be database-backed without a content
+    // file. Read the body only for the active resource; loading it into the full
+    // workspace listing would multiply memory use by the size of the whole vault.
+    try {
+      const body = await query('SELECT content FROM resources WHERE id = $1 LIMIT 1', [activeDoc.id]);
+      rawFileContent = typeof body.rows?.[0]?.content === 'string' ? body.rows[0].content : '';
+    } catch {
+      // Older installations may not have the optional content column.
+    }
+    docBodyHtml = rawFileContent
+      ? await renderMarkdownWithEmbedsAsync(
+          stripLeadingDuplicateTitle(rawFileContent, activeDoc.title),
+          currentUser,
+          0
+        )
+      : `<p>${activeDoc.metadata?.summary || activeDoc.title}</p>`;
+  }
+}
+
+// Incoming Backlinks
+const backlinks = buildBacklinks(activeDoc, rawResources);
+
+// Compute hierarchical breadcrumbs path
+const breadcrumbItems = buildBreadcrumbs(activeDoc, rawResources, {
+  isFolder,
+  isPdf,
+  isImage,
+  isGoogleDrive,
+});
+---
+
+<BaseLayout
+  resource={noAccessibleDocument ? undefined : activeDoc}
+  currentUser={currentUser}
+  activeResourceId={noAccessibleDocument ? undefined : activeDoc.id}
+  activeTitle={activeDoc.title}
+  activeType={activeDoc.type}
+  noMainWrapper={true}
+  layoutVariant="workspace"
+  canonicalUrl={canonicalResourcePath}
+>
+  <!-- Real-Time Reading Progress Bar -->
+  <div id="reading-progress" class="reading-progress-bar"></div>
+
+  <ResourceShell
+    currentUser={currentUser}
+    session={Astro.locals.session}
+    activeResourceId={noAccessibleDocument ? undefined : activeDoc.id}
+    activeTitle={activeDoc.title}
+    activeType={activeDoc.type}
+    showContext={!noAccessibleDocument}
+  >
+    <Fragment slot="explorer">
+      <FolderTree
+        client:load
+        treeData={folderTreeData.nodes}
+        hasMoreRoots={folderTreeData.hasMoreRoots}
+        activeDocId={activeDocId}
+        activeFolderId={activeFolderId}
+        activeFolderTitle={activeFolderTitle}
+        currentUser={currentUser}
+      />
+    </Fragment>
+
+    <Fragment slot="content">
+      <article class="workspace-resource-article">
+            <!-- Breadcrumbs Navigation Trail -->
+            <nav class="breadcrumbs-trail" aria-label="Breadcrumb">
+              {breadcrumbItems.map((item, index) => {
+                const isLast = index === breadcrumbItems.length - 1;
+                return (
+                  <span class="workspace-breadcrumb-item">
+                    {isLast ? (
+                      <span class="breadcrumb-current">
+                        {item.icon && <span class="breadcrumb-icon" aria-hidden="true">{item.icon}</span>}
+                        <span>{item.title}</span>
+                      </span>
+                    ) : (
+                      <>
+                        <a href={item.href}>
+                          {item.icon && <span class="breadcrumb-icon" aria-hidden="true">{item.icon}</span>}
+                          <span>{item.title}</span>
+                        </a>
+                        <span class="breadcrumb-separator" aria-hidden="true">›</span>
+                      </>
+                    )}
+                  </span>
+                );
+              })}
+            </nav>
+
+            <!-- Streamlined Note Header -->
+            <div class="workspace-resource-header">
+              <div class="workspace-resource-title-wrap">
+                <h1 id={activeTitleAnchorId || undefined} class="workspace-resource-title">
+                  {activeDoc.title}
+                </h1>
+              </div>
+
+              <!-- Top Action Buttons: ReadToggle + Reader Mode + Edit/View Mode -->
+              <div class="workspace-resource-actions">
+                {!noAccessibleDocument && <ReadToggle client:load size="sm" resourceId={activeDoc.id} currentUser={currentUser} title={activeDoc.title} />}
+
+                <!-- Reader Mode Toggle -->
+                <button
+                  id="reader-mode-toggle"
+                  class="ui-icon-button ui-icon-button--ghost"
+                  title="Toggle reader mode"
+                  aria-label="Toggle reader mode"
+                  aria-pressed="false"
+                >
+                  <BookOpen size={16} aria-hidden="true" />
+                </button>
+
+                {!noAccessibleDocument && currentUser !== 'user:anonymous' && (
+                  <button
+                    id="doc-share-btn"
+                    type="button"
+                    class="ui-icon-button ui-icon-button--ghost"
+                    title="Share & manage access"
+                    aria-label="Share this resource and manage access"
+                    data-resource-id={activeDoc.id}
+                    data-resource-title={activeDoc.title}
+                    data-resource-type={activeDoc.type}
+                  >
+                    <Share2 size={16} aria-hidden="true" />
+                  </button>
+                )}
+
+                {canWysiwygEditActive && currentUser !== 'user:anonymous' && canEditActiveDoc && (
+                  effectiveEditMode ? (
+                    <a href={canonicalResourcePath} class="ui-icon-button ui-icon-button--ghost" title="View" aria-label="View"><Eye size={16} aria-hidden="true" /></a>
+                  ) : (
+                    <a href={`${canonicalResourcePath}?edit=true`} class="ui-icon-button ui-icon-button--active" title="Edit" aria-label="Edit"><Pencil size={16} aria-hidden="true" /></a>
+                  )
+                )}
+              </div>
+            </div>
+
+            <!-- Read-only notice: edit was requested but the user lacks permission -->
+            {isEditMode && !canEditActiveDoc && (
+              <div class="ui-card workspace-readonly-notice" role="status">
+                <LockKeyhole size={18} aria-hidden="true" />
+                <div class="workspace-readonly-notice__content">
+                  <strong class="workspace-readonly-notice__label">Read-only.</strong>
+                  You don’t have edit access to this note, so the WYSIWYG editor was not opened.
+                </div>
+              </div>
+            )}
+
+            <!-- Streamlined Subtext Meta Row (Author, Reading Time, Inline Tags, & Properties Dropdown) -->
+            {!noAccessibleDocument && canWysiwygEditActive && !effectiveEditMode && (
+              <ContentMeta
+                resource={activeDoc}
+                contentBody={rawFileContent}
+                currentUser={currentUser}
+                session={Astro.locals.session}
+              />
+            )}
+
+            <!-- MAIN CONTENT AREA: Render Content via ResourceContentRenderer -->
+            {noAccessibleDocument ? (
+              <section class="workspace-empty-state ui-card" aria-label="Get started">
+                <FolderOpen className="workspace-empty-state__icon" aria-hidden="true" />
+                <h2 class="workspace-empty-state__title">Your workspace is ready</h2>
+                <p class="workspace-empty-state__desc">
+                  {currentUser === 'user:anonymous'
+                    ? 'Sign in to create and organize your documents, or open a public resource from the explorer.'
+                    : 'Create a note, organize it in a folder, or bring in an existing file.'}
+                </p>
+                <div class="workspace-empty-state__actions">
+                  {currentUser === 'user:anonymous' ? (
+                    <a href="/login" class="ui-button ui-button--primary"><LogIn size={16} aria-hidden="true" /> Sign in</a>
+                  ) : (
+                    <button type="button" class="ui-button ui-button--primary" data-empty-action="create" data-create-mode="create" data-create-type="document"><Plus size={16} aria-hidden="true" /> Create your first note</button>
+                  )}
+                </div>
+                {currentUser !== 'user:anonymous' && (
+                  <p class="workspace-empty-state__hint">You can add folders or import files from the explorer.</p>
+                )}
+              </section>
+            ) : <ResourceContentRenderer
+              isEditMode={effectiveEditMode}
+              isPdf={isPdf}
+              isImage={isImage}
+              isGoogleDrive={isGoogleDrive}
+              isCanvas={isCanvas}
+              activeDoc={activeDoc}
+              currentUser={currentUser}
+              rawFileContent={rawFileContent}
+              docBodyHtml={docBodyHtml}
+            />}
+      </article>
+    </Fragment>
+
+    {/* RIGHT COLUMN: Contextual Graph View, Table of Contents, & Backlinks.
+        Node click navigation lives in `useGraphEngine`, which resolves the
+        target's `path` itself — a function prop could not survive island
+        serialization anyway. */}
+    <Fragment slot="context">
+      <section class="sidebar-panel">
+        <GraphContainer client:load {...graphData} activeNodeId={activeDocId} currentUser={currentUser} />
+      </section>
+
+      {((!isFolder && !isPdf && !isImage && !isGoogleDrive) || isPaper) && (
+        <section class="sidebar-panel sidebar-panel--fill">
+          <TableOfContents client:idle />
+        </section>
+      )}
+
+      {backlinks.length > 0 && (
+        <section class="sidebar-panel sidebar-panel--fill">
+          <Backlinks client:idle documentId={activeDocId} backlinks={backlinks} />
+        </section>
+      )}
+    </Fragment>
+  </ResourceShell>
+
+    <!-- Floating Wikilink Hover Preview Portal (Hydrated on idle) -->
+    <WikilinkPreview client:idle />
+
+    <!-- Floating Back to Top Button -->
+    <button id="back-to-top" class="back-to-top-btn" title="Scroll to Top" aria-label="Scroll to Top">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5"></line>
+        <polyline points="5 12 12 5 19 12"></polyline>
+      </svg>
+    </button>
+
+    <script>
+      function setupWorkspaceInteractivity() {
+        function handleScroll() {
+          const progressBar = document.getElementById('reading-progress');
+          const backToTopBtn = document.getElementById('back-to-top');
+          const winScroll = document.documentElement.scrollTop || document.body.scrollTop;
+          const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+          if (height > 0 && progressBar) {
+            progressBar.style.width = (winScroll / height) * 100 + '%';
+          }
+          if (backToTopBtn) {
+            backToTopBtn.classList.toggle('visible', winScroll > 380);
+          }
+        }
+
+        if (!window.__workspaceGlobalEvents) {
+          window.__workspaceGlobalEvents = true;
+          window.addEventListener('scroll', handleScroll, { passive: true });
+          document.addEventListener('click', (e) => {
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const el = e.target as HTMLElement;
+            if (el.closest?.('#back-to-top')) {
+              window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+              return;
+            }
+
+            const shareBtn = el.closest?.('#doc-share-btn') as HTMLElement | null;
+            if (shareBtn) {
+              window.dispatchEvent(new CustomEvent('open-share-modal', {
+                detail: {
+                  resourceId: shareBtn.dataset.resourceId,
+                  title: shareBtn.dataset.resourceTitle || shareBtn.dataset.resourceId,
+                  type: shareBtn.dataset.resourceType,
+                },
+              }));
+              return;
+            }
+
+            const createBtn = el.closest?.('[data-empty-action="create"]') as HTMLElement | null;
+            if (createBtn) {
+              const detail: Record<string, string> = {};
+              if (createBtn.dataset.createMode) detail.mode = createBtn.dataset.createMode;
+              if (createBtn.dataset.createType) detail.type = createBtn.dataset.createType;
+              window.openCreateResourceModal?.(detail);
+              return;
+            }
+
+            // In-page anchor click handling for headings and block links
+            const anchorLink = el.closest?.('a[href*="#"]') as HTMLAnchorElement | null;
+            if (anchorLink) {
+              const destination = new URL(anchorLink.href, window.location.href);
+              const targetHash = destination.hash.slice(1);
+              const isSamePage = destination.origin === window.location.origin &&
+                destination.pathname === window.location.pathname &&
+                destination.search === window.location.search;
+              if (isSamePage && targetHash && scrollToHashTarget(targetHash)) {
+                e.preventDefault();
+                history.pushState(null, '', destination.href);
+              }
+            }
+          });
+
+          window.addEventListener('hashchange', () => {
+            const hash = window.location.hash.replace(/^#/, '');
+            if (hash) scrollToHashTarget(hash);
+          });
+        }
+
+        function scrollToHashTarget(hashString: string): boolean {
+          if (!hashString) return false;
+          let rawHash: string;
+          try { rawHash = decodeURIComponent(hashString); }
+          catch { return false; }
+          const cleanHash = rawHash.replace(/^\^/, '');
+          const slugHash = cleanHash
+            .toLowerCase()
+            .replace(/<[^>]+>/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+
+          const candidates = [
+            `#${CSS.escape(rawHash)}`,
+            `#${CSS.escape(cleanHash)}`,
+            `#block-${CSS.escape(cleanHash)}`,
+            `[data-block-id="${CSS.escape(cleanHash)}"]`,
+            `#${CSS.escape(slugHash)}`,
+            `[name="${CSS.escape(rawHash)}"]`,
+            `[name="${CSS.escape(cleanHash)}"]`,
+          ];
+
+          let targetEl: HTMLElement | null = null;
+          for (const sel of candidates) {
+            try {
+              targetEl = document.querySelector(sel) as HTMLElement | null;
+              if (targetEl) break;
+            } catch {
+              // Ignore invalid selector
+            }
+          }
+
+          if (targetEl) {
+            if (!targetEl.hasAttribute('tabindex')) targetEl.tabIndex = -1;
+            targetEl.focus({ preventScroll: true });
+            targetEl.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center' });
+            targetEl.classList.remove('hash-target-highlight');
+            void targetEl.offsetWidth; // Force reflow to replay CSS pulse animation
+            targetEl.classList.add('hash-target-highlight');
+            return true;
+          }
+          return false;
+        }
+
+        // On initial page load, check if URL has an anchor hash or doc query anchor
+        const initialHash = window.location.hash.replace(/^#/, '');
+        if (initialHash) {
+          setTimeout(() => scrollToHashTarget(initialHash), 120);
+        } else {
+          // Check if ?doc= has an embedded anchor
+          const searchParams = new URLSearchParams(window.location.search);
+          const docParam = searchParams.get('doc');
+          if (docParam && docParam.includes('#')) {
+            const hashFromDoc = docParam.slice(docParam.indexOf('#') + 1);
+            if (hashFromDoc) {
+              setTimeout(() => scrollToHashTarget(hashFromDoc), 120);
+            }
+          }
+        }
+
+      }
+
+      setupWorkspaceInteractivity();
+      document.addEventListener('astro:page-load', setupWorkspaceInteractivity);
+    </script>
+</BaseLayout>

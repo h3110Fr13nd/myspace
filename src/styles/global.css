@@ -1,0 +1,61 @@
+/* ============================================================================ */
+/* Global CSS Entry Point (Modular Architecture)                                */
+/* ============================================================================ */
+
+/* 1. Design tokens, CSS variables, color palettes, and themes */
+@import './tokens.css';
+
+/* 2. Core layout, page shells, workspace grids, and responsiveness */
+@import './layout.css';
+
+/* 3. Reusable UI primitives (Button, Modal, Drawer, Tabs, Toast, Badge, etc.) */
+@import './primitives.css';
+
+/* 3a. Resource creation and import details */
+@import './create-resource-modal.css';
+
+/* 3b. Keyboard shortcut guide rows and keycaps */
+@import './keyboard-shortcuts.css';
+
+/* 3c. Search results and create/import command palette */
+@import './search-modal.css';
+
+/* 4. Workspace folder tree, navigation rows, and context menu */
+@import './tree.css';
+
+/* 5. Editor surfaces and contextual writing menus */
+@import './editor.css';
+
+/* 6. Application chrome: top bar, brand block, action rail (replaces header).
+      Loaded after primitives so it can adjust primitive defaults. */
+@import './chrome.css';
+
+/* 6a. Account identity and its keyboard-accessible action menu */
+@import './user-menu.css';
+
+/* 6b. Mobile navigation, compact workspace search, and touch targets */
+@import './mobile-nav.css';
+
+/* 7. Markdown prose, code blocks, callouts, citations, and typography */
+@import './prose.css';
+
+/* 7a. Resource byline, tags, and metadata disclosure */
+@import './content-meta.css';
+
+/* 8. Resource viewer frame, diagrams, popovers, and viewer stages */
+@import './viewers.css';
+
+/* 8a. PDF annotation-note actions and their create states */
+@import './pdf-notes.css';
+
+/* 9. IAM ReBAC permission management, studio, roles, and troubleshooter */
+@import './iam.css';
+
+/* 10. Appearance customization page, swatches, and density settings */
+@import './appearance.css';
+
+/* 11. Knowledge graph visualization, canvas/SVG viewports, toolbar, and controls */
+@import './graph.css';
+
+/* 12. Dynamic resource surfaces: folder and tag note headers inside the shell */
+@import './dynamic-resources.css';

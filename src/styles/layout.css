@@ -1,0 +1,1261 @@
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(circle at 15% 15%, color-mix(in srgb, var(--accent-primary) 15%, transparent) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--accent-secondary) 15%, transparent) 0%, transparent 40%);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+[data-theme="light"] body {
+  background-image: 
+    radial-gradient(circle at 15% 15%, color-mix(in srgb, var(--accent-primary) 7%, transparent) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--accent-secondary) 7%, transparent) 0%, transparent 40%);
+}
+
+
+.folder-tree-heading {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.search-input-icon {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.search-input-shell:focus-within {
+  outline: 2px solid var(--accent-cyan-bright);
+  outline-offset: 2px;
+}
+
+/* Workspace Container & Responsive Full-Width Grid */
+.workspace-container {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2) var(--space-4);
+  box-sizing: border-box;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: var(--workspace-left-w) minmax(0, 1fr) var(--workspace-right-w);
+  gap: 1rem;
+  align-items: start;
+  width: 100%;
+}
+
+/* Left Sidebar: Sticky Tree Container */
+/* Left Sidebar: Fixed Desktop Tree Container */
+.sidebar-left {
+  position: sticky !important;
+  top: 12px !important;
+  height: var(--workspace-sidebar-height) !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 1024px) {
+  .sidebar-left {
+    position: fixed !important;
+    top: 12px !important;
+    width: var(--workspace-left-w);
+    height: var(--workspace-sidebar-height) !important;
+    z-index: 10;
+  }
+}
+
+.sidebar-left-inner {
+  height: 100%;
+  padding: 0.75rem 0.4rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* Center Content: Main Document Card */
+.center-content {
+  padding: 1.25rem 1.5rem !important;
+  min-height: 80vh;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  margin-top: 12px;
+}
+
+/* Right Sidebar: Sticky Stack for Graph, TOC, Backlinks */
+@media (min-width: 1024px) {
+  .center-content {
+    grid-column: 2;
+  }
+}
+
+/* Right Sidebar: Sticky/Fixed Stack for Graph, TOC, Backlinks */
+.sidebar-right {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  position: sticky !important;
+  top: 12px !important;
+  height: var(--workspace-sidebar-height) !important;
+  /* The column itself never scrolls: the graph keeps its natural height and
+     the panels below split the remaining space, each scrolling on its own. */
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .sidebar-right {
+    position: fixed !important;
+    top: 12px !important;
+    right: var(--space-4);
+    width: var(--workspace-right-w);
+    height: var(--workspace-sidebar-height) !important;
+    z-index: 10;
+  }
+}
+
+@media (min-width: 1680px) {
+  .sidebar-right {
+    right: var(--space-5) !important;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1280px) {
+  .sidebar-right {
+    right: var(--space-4) !important;
+  }
+}
+
+.sidebar-panel {
+  padding: 0.85rem 0.4rem;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+/* Table of contents and linked references share the leftover height equally
+   and scroll inside their own panel. min-height:0 is what lets a flex child
+   actually scroll instead of pushing the column taller. */
+.sidebar-panel--fill {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-panel--fill > * {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+}
+
+.sidebar-panel:last-child {
+  border-bottom: none;
+}
+
+@media (min-width: 1680px) {
+  .workspace-container {
+    padding: var(--space-4) var(--space-5) var(--space-2) var(--space-5);
+    padding: 0 var(--space-5) var(--space-2) var(--space-5);
+  }
+  .workspace-grid {
+    grid-template-columns: var(--workspace-left-w) minmax(0, 1fr) var(--workspace-right-w);
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1280px) {
+  .workspace-grid {
+    grid-template-columns: var(--workspace-left-w) minmax(0, 1fr) var(--workspace-right-w);
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  .workspace-grid {
+    grid-template-columns: var(--workspace-left-w) minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  .sidebar-right {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .sidebar-left {
+    position: static !important;
+    height: auto !important;
+    max-height: 48px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    transition: max-height 0.3s ease;
+  }
+  .sidebar-left-inner {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .sidebar-left.is-expanded-mobile {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+}
+
+body.reader-mode-active .sidebar-left,
+body.reader-mode-active .sidebar-right {
+  display: none !important;
+}
+
+/* Reader mode: hide sidebars only. The grid template (and therefore the
+   center column width and font size) is intentionally left untouched so the
+   content renders at EXACTLY the same width as normal mode — nothing shifts
+   except the chrome. Tracks of the hidden columns remain in place. */
+
+/* Highlight & Checkbox styles for OFM */
+mark.highlight, .prose-content mark {
+  background-color: color-mix(in srgb, var(--status-warning) 25%, transparent);
+  color: inherit;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border-bottom: 2px solid color-mix(in srgb, var(--status-warning) 60%, transparent);
+}
+
+.task-list-item {
+  list-style-type: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0.35rem 0;
+}
+
+.task-list-item input[type="checkbox"] {
+  accent-color: var(--accent-primary);
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+/* Accordion details must not overflow its natural flow */
+.prose-content details.accordion-card {
+  overflow: hidden;
+  contain: layout;
+}
+
+.prose-content details.accordion-card > div {
+  overflow-x: auto;
+}
+
+/* Container Utility */
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Prose Content Media & Code Bounded Constraints */
+.prose-content {
+  isolation: isolate;
+  position: relative;
+  overflow-x: clip;
+}
+
+.prose-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  border: 1px solid var(--border-glass);
+  margin: 1rem 0;
+  /* margin: 1rem 0; */
+}
+
+.prose-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  margin: 1.5rem 0;
+}
+
+.prose-table-scroll:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.prose-content table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.prose-content table th, .prose-content table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border-glass);
+}
+
+.prose-table-scroll__hint {
+  display: none;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 var(--space-2) auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 640px) {
+  .prose-table-scroll__hint {
+    display: block;
+  }
+}
+
+.prose-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+
+/* ============================================================================ */
+/* Performance & UI Enhancements: Scrollbars, Selection, Containment & Navigation*/
+/* ============================================================================ */
+
+/* Typography: Code blocks */
+code, pre, kbd, samp, .shiki {
+  font-family: var(--font-code) !important;
+}
+
+/* ============================================================================ */
+/* Custom Theme-Consistent Sleek Scrollbars (Standard CSS + WebKit/Blink Rules)  */
+/* ============================================================================ */
+
+/* 1. Standards-compliant browsers (Firefox, Chrome 121+, Safari 18.2+) */
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* 2. Universal WebKit / Blink Engine (Chrome, Edge, Safari, Brave, Arc, Electron) */
+*::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: var(--scrollbar-width, 8px);
+  height: var(--scrollbar-width, 8px);
+}
+
+*::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:active,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 3. Compact Variant for Cards, Modals, Code Blocks, Sidebars & Textareas */
+.canvas-node-scrollable,
+.custom-scrollbar,
+.prose-table-scroll,
+pre,
+code,
+.shiki-code-block,
+.sidebar-left,
+.sidebar-right,
+textarea,
+.prose-content,
+.workspace-grid {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.canvas-node-scrollable::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar,
+.prose-table-scroll::-webkit-scrollbar,
+pre::-webkit-scrollbar,
+.shiki-code-block::-webkit-scrollbar,
+.sidebar-left::-webkit-scrollbar,
+.sidebar-right::-webkit-scrollbar,
+textarea::-webkit-scrollbar,
+.prose-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.canvas-node-scrollable::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.prose-table-scroll::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb,
+.shiki-code-block::-webkit-scrollbar-thumb,
+.sidebar-left::-webkit-scrollbar-thumb,
+.sidebar-right::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb,
+.prose-content::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+/* 4. Form Controls Color-Scheme Enforcement */
+textarea,
+select,
+input {
+  color-scheme: dark;
+}
+
+[data-theme="light"] textarea,
+[data-theme="light"] select,
+[data-theme="light"] input {
+  color-scheme: light;
+}
+
+/* Text Selection */
+::selection {
+  background: color-mix(in srgb, var(--accent-cyan-bright) 30%, transparent);
+  color: var(--text-on-accent);
+}
+
+/* Reading Progress Indicator */
+.reading-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-cyan));
+  z-index: 99999;
+  transition: width 0.08s linear;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.7);
+  pointer-events: none;
+}
+
+/* Breadcrumbs Trail */
+.workspace-resource-article {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.workspace-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.workspace-resource-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.workspace-resource-title-wrap {
+  flex: 1;
+  min-width: 260px;
+}
+
+.workspace-resource-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.workspace-resource-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: var(--space-1);
+}
+
+.workspace-readonly-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-color: var(--status-danger-border);
+  background: var(--status-danger-soft);
+  padding: var(--space-3) var(--space-4);
+}
+
+.workspace-readonly-notice__content {
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+
+.workspace-readonly-notice__label {
+  color: var(--status-danger);
+}
+
+.breadcrumbs-trail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 0.65rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.breadcrumbs-trail a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s ease;
+}
+
+.breadcrumbs-trail a:hover {
+  color: var(--accent-cyan);
+}
+
+.breadcrumbs-trail .breadcrumb-separator {
+  color: var(--text-muted);
+  opacity: 0.6;
+  font-size: 0.7rem;
+}
+
+.breadcrumbs-trail .breadcrumb-current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Collapsible Left Sidebar */
+.workspace-grid.sidebar-left-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) var(--workspace-right-w);
+}
+
+.workspace-grid.sidebar-left-collapsed .sidebar-left {
+  overflow: visible;
+  width: 48px !important;
+}
+
+.workspace-grid.sidebar-left-collapsed .sidebar-left-inner {
+  display: none !important;
+}
+
+@media (min-width: 1024px) and (max-width: 1280px) {
+  .workspace-grid.sidebar-left-collapsed {
+    grid-template-columns: 48px minmax(0, 1fr) var(--workspace-right-w);
+  }
+}
+
+@media (max-width: 1023px) {
+  .workspace-grid.sidebar-left-collapsed {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+}
+
+.sidebar-left-mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--accent-cyan-bright);
+  cursor: pointer;
+  text-align: left;
+  padding: 2px 4px;
+}
+
+@media (max-width: 768px) {
+  .sidebar-left {
+    margin-top: var(--space-8);
+  }
+
+  .sidebar-left-mobile-header {
+    display: flex;
+  }
+  .sidebar-left .sidebar-toggle-btn {
+    display: none !important;
+  }
+}
+
+.sidebar-toggle-btn {
+  position: absolute;
+  top: 14px;
+  right: -22px;
+  width: var(--hit-target-min);
+  height: var(--hit-target-min);
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--elevation-1);
+  transition: color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
+}
+
+.sidebar-toggle-btn:hover {
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  transform: scale(1.1);
+}
+
+.sidebar-toggle-icon {
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.sidebar-toggle-btn[aria-expanded="false"] .sidebar-toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* Back to Top Floating Action */
+.back-to-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  color: var(--accent-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  z-index: 900;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  transition: opacity 0.25s ease, transform 0.25s ease, border-color 0.2s ease;
+}
+
+.back-to-top-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.back-to-top-btn:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+  transform: translateY(-2px);
+}
+
+/* CSS Layout Containment for Render Isolation */
+.sidebar-left, .sidebar-right {
+  contain: layout style;
+}
+
+/* Spatial Canvas Gesture Isolation & Overscroll Protection */
+.canvas-board-viewport,
+.canvas-board-container,
+.canvas-studio-container {
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+
+/*
+ * Nodes must opt out of browser gestures individually.
+ *
+ * The effective touch behaviour is the intersection of `touch-action` along the
+ * hit element's ancestor chain, and the descendants here fall back to `auto`.
+ * That leaves the browser free to claim a one-finger drag for a scroll: it fires
+ * `pointercancel` straight after `pointerdown`, the drag never receives a single
+ * `pointermove`, and a touch can select a node but never move it.
+ *
+ * `none` is safe here because the board does not scroll. Where a node genuinely
+ * needs to scroll its own content, that region re-enables scrolling explicitly
+ * via the `data-canvas-native-scroll` opt-out.
+ */
+.canvas-board-viewport .canvas-interactive-node,
+.canvas-board-viewport .canvas-port-handle,
+.canvas-board-viewport .canvas-edge-endpoint,
+.canvas-board-viewport .canvas-node-scrollable,
+.canvas-board-viewport .canvas-transform-layer {
+  touch-action: none !important;
+}
+
+/* Escape hatch for node regions that should keep native scrolling. */
+.canvas-board-viewport [data-canvas-native-scroll] {
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+}
+
+/* ---- Board surface & chrome ---- */
+.canvas-board-viewport {
+  /* Dot grid, driven by CSS custom properties the shell writes imperatively so
+     panning never re-renders React. Minor grid first, major grid on top. */
+  background-color: var(--surface-0, #070b14);
+  background-image:
+    radial-gradient(circle, rgba(0, 242, 254, 0.22) 1.5px, transparent 1.5px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size:
+    var(--grid-major, 120px) var(--grid-major, 120px),
+    var(--grid-minor, 24px) var(--grid-minor, 24px);
+  background-position:
+    var(--grid-x, 0) var(--grid-y, 0),
+    var(--grid-x, 0) var(--grid-y, 0);
+}
+
+.canvas-board-header {
+  height: 52px;
+  min-height: 52px;
+  background: var(--surface-2, rgba(15, 23, 42, 0.96));
+  border-bottom: 1px solid var(--border-glass);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  box-sizing: border-box;
+  z-index: 20;
+  gap: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.canvas-board-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(5, 8, 16, 0.96);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+.canvas-board-fullscreen__bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-glass);
+  padding-bottom: 12px;
+}
+
+/*
+ * The transform layer is positioned by custom properties rather than a React
+ * style object. `translate3d` keeps the pan on the compositor, so dragging stays
+ * smooth no matter how many nodes are mounted.
+ */
+.canvas-transform-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* Above the edge layer: edges are drawn behind nodes, so the hit paths must
+     sit below them too. Without an explicit z-index the edge layer (z-index 2)
+     painted over the nodes and swallowed clicks meant for the nodes. */
+  z-index: 3;
+  /* The layer spans the whole content bounding box, so if it captured pointer
+     events itself it would sit over the edge hit paths underneath and edges
+     would become unselectable. Only the real children opt back in. */
+  pointer-events: none;
+  transform-origin: 0 0;
+  transform: translate3d(var(--canvas-x, 0), var(--canvas-y, 0), 0) scale(var(--canvas-k, 1));
+  will-change: transform;
+}
+
+.canvas-transform-layer > * {
+  pointer-events: auto;
+}
+
+/* ---- Edge layer (screen space) ---- */
+.canvas-edge-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  /* Isolate layout/paint so edge repaints cannot invalidate the node layer. */
+  contain: strict;
+}
+
+.canvas-edge-hits {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* The SVG is inert, but each hit path opts back in so edges stay clickable
+     without the whole layer eating pointer events from the nodes above it. */
+  pointer-events: none;
+}
+
+.canvas-edge-hits path {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/*
+ * Shown when the board has no nodes. Without it an unresolvable canvas and a
+ * genuinely empty one look identical: a blank rectangle, which reads as a bug
+ * rather than as "there is nothing here yet".
+ */
+.canvas-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.canvas-empty-state__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.canvas-empty-state__hint {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 0.85rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* Rubber-band selection. Lives in the transform layer, so its coordinates are
+   world units and it scales with the board like everything else in there. */
+.canvas-marquee {
+  position: absolute;
+  border: 1.5px dashed var(--accent-cyan, #00f2fe);
+  background: rgba(0, 242, 254, 0.12);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 0 16px rgba(0, 242, 254, 0.25);
+}
+
+.canvas-edge-endpoint,
+.canvas-port-handle {
+  /* Ports and endpoint handles are sized in inverse-zoom units inline, so they
+     need to sit above the node layer but below chrome. */
+  transition: box-shadow 120ms ease-out, background-color 120ms ease-out;
+}
+
+/* Drop-target feedback for the connection drag. Without this the user had no
+   way to tell whether a release would connect or be thrown away. */
+[data-canvas-node-id][data-drop-target='true'] {
+  outline: 2px solid var(--accent-cyan-bright, #00f2fe);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+[data-canvas-node-id][data-drop-target='true'] .canvas-node-content {
+  filter: brightness(1.12);
+}
+
+.canvas-node-scrollable {
+  overscroll-behavior: contain !important;
+}
+
+/* Spatial Canvas High-FPS Hardware Performance Rules */
+.canvas-board-viewport.is-interacting .canvas-transform-layer {
+  will-change: transform;
+}
+
+.canvas-board-viewport.is-interacting .glass-card,
+.canvas-board-viewport.is-interacting .canvas-interactive-node {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  transition: none !important;
+}
+
+.canvas-board-viewport.is-interacting * {
+  user-select: none !important;
+}
+
+
+/* ============================================================================ */
+/* Shared Page Styling (consumed by pages routed through layouts/BaseLayout)    */
+/* ============================================================================ */
+
+/* ---- Skip link ----
+ * First tab stop. Off-screen until focused, then pinned to the top-left so it
+ * works without knowing which chrome mode is active. */
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  padding: 0.6rem 1rem;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-primary);
+  border-radius: 0 0 var(--radius-sm) 0;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transform: translateY(-110%);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+/* The skip target is a plain anchor/main, not a control — no visible ring. */
+#main-content:focus {
+  outline: none;
+}
+
+/* ---- Page containers ---- */
+.page-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 4rem 1.5rem;
+}
+.page-shell--900 {
+  max-width: 900px;
+  padding: 2rem 1.5rem;
+}
+.page-shell--960 {
+  max-width: 960px;
+  padding: 2rem 1.5rem;
+}
+
+/* ---- Auth pages ---- */
+.auth-page {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  width: 100%;
+}
+.auth-card {
+  padding: var(--space-6);
+}
+.auth-hero {
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+.auth-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--space-3);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-on-accent);
+}
+.auth-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.auth-title {
+  font-size: var(--text-3xl);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+  font-weight: 700;
+}
+.auth-sub {
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  margin: 0;
+}
+.auth-redirect-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.auth-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.auth-error {
+  border: 1px solid var(--status-danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-danger-soft);
+  color: var(--status-danger);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+.auth-oauth-error {
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.auth-error__icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+.auth-divider__line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-glass);
+}
+.auth-divider__label {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.auth-footer {
+  margin: var(--space-5) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.auth-footer a {
+  color: var(--accent-cyan);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-footer a:hover {
+  text-decoration: underline;
+}
+.auth-card .auth-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: var(--transition-fast);
+}
+.auth-card .auth-google:hover {
+  background: var(--control-bg-hover);
+  border-color: var(--control-border-hover);
+  box-shadow: none;
+  transform: none;
+}
+.auth-google-mark__blue { fill: var(--brand-google-blue); }
+.auth-google-mark__green { fill: var(--brand-google-green); }
+.auth-google-mark__yellow { fill: var(--brand-google-yellow); }
+.auth-google-mark__red { fill: var(--brand-google-red); }
+.auth-card .auth-submit {
+  width: 100%;
+  margin-top: var(--space-1);
+}
+@media (max-width: 480px) {
+  .auth-card {
+    padding: var(--space-4);
+  }
+}
+
+/* Directory Node Folder & Resource Card Grids */
+.dir-section-title {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.dir-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.dir-folder-card {
+  padding: 1.25rem;
+  text-decoration: none;
+  border: 1px solid var(--border-glass);
+  display: block;
+}
+.dir-folder-card__icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.dir-folder-card__title {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 1rem;
+}
+.dir-folder-card__count {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+.dir-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.dir-doc-card {
+  padding: 1.25rem;
+  text-decoration: none;
+  border: 1px solid var(--border-glass);
+  display: block;
+}
+.dir-doc-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dir-doc-card__title {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.dir-doc-card__type {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.dir-doc-card__summary {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0 0;
+  line-height: 1.5;
+}
+.dir-intro-text {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+
+/* Breadcrumb icons */
+.breadcrumb-icon {
+  margin-right: 4px;
+  font-size: 0.85em;
+}
+
+/* Workspace empty state */
+.workspace-empty-state {
+  max-width: 560px;
+  margin: var(--space-6) auto;
+  padding: var(--space-6);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+.workspace-empty-state__icon {
+  width: 2rem;
+  height: 2rem;
+  color: var(--accent-cyan-bright);
+}
+.workspace-empty-state__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.workspace-empty-state__desc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  max-width: 42ch;
+}
+.workspace-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.workspace-empty-state__actions .ui-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.workspace-empty-state__actions .ui-button--primary {
+  min-height: 44px;
+  padding-inline: var(--space-5);
+}
+.workspace-empty-state__hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.workspace-empty-state__hint kbd {
+  font-family: var(--font-code);
+  font-size: 0.85em;
+  padding: 1px 6px;
+  border: 1px solid var(--border-glass);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}

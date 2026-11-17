@@ -1,0 +1,22 @@
+name = "collab-edge-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [
+  { name = "COLLAB_ROOM", class_name = "CollabRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CollabRoom"]
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "workspace-private"
+
+[vars]
+ASTRO_BACKEND_URL = "http://localhost:4321"
+INTERNAL_SYNC_SECRET = "foss_collab_internal_secret_key"
+JWT_SECRET = "dev_secret_jwt_key_change_in_prod"

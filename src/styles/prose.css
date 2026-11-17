@@ -1,0 +1,212 @@
+/* ============================================================================ */
+/* Shiki Syntax Highlighting - github-dark/github-light dual themes             */
+/* ============================================================================ */
+
+/* Apply dark theme token colors by default (our dark workspace) */
+.shiki,
+.shiki-code-block .shiki {
+  background: color-mix(in srgb, var(--surface-1) 95%, transparent) !important;
+  border-radius: 12px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+[data-theme="light"] .shiki span {
+  color: var(--shiki-light) !important;
+}
+
+/* Code language & title badges */
+.code-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 2;
+}
+
+.code-title-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--surface-1) 95%, transparent);
+  border: 1px solid var(--border-glass);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 4px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.code-lang-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
+  border: 1px solid var(--border-glass);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 3px 10px;
+  font-family: var(--font-body);
+  position: relative;
+  z-index: 2;
+}
+
+/* Code card wrapper */
+.code-card {
+  position: relative;
+  margin: 1.25rem 0;
+}
+
+/* The wrapper owns the outline; avoid a second frame around Shiki's <pre>. */
+.prose-content .shiki-code-block .shiki {
+  border: 0;
+  border-radius: inherit;
+  margin: 0;
+}
+
+/* Reserve a clear strip for the copy action instead of covering source text. */
+.code-card > .shiki-code-block > .shiki,
+.code-card > pre.shiki-code-block {
+  padding-top: calc(var(--space-6) + var(--space-2)) !important;
+}
+
+.code-card:has(.code-header-bar) .code-copy-btn {
+  top: calc(var(--space-5) + var(--space-2)) !important;
+}
+
+/* Keep code identifiers intact in narrow tables; the table remains scrollable. */
+.prose-content table code {
+  white-space: nowrap;
+}
+
+/* Copy stays visible on touch devices and keyboard focus; desktop keeps hover reveal. */
+.code-copy-btn {
+  opacity: 1;
+}
+
+.code-copy-btn:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .code-copy-btn {
+    opacity: 0;
+  }
+
+  .code-card:hover .code-copy-btn,
+  .code-card:focus-within .code-copy-btn {
+    opacity: 1;
+  }
+}
+
+.code-copy-btn:hover {
+  color: var(--accent-cyan) !important;
+  border-color: var(--accent-cyan) !important;
+}
+
+
+/* ==========================================================================
+   OBSIDIAN CALLOUTS & CITATIONS STYLES
+   ========================================================================== */
+.obsidian-callout {
+  margin: var(--space-5) 0;
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.obsidian-callout .callout-title {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+.obsidian-callout[open] .callout-fold-indicator {
+  transform: rotate(180deg);
+}
+
+.obsidian-callout .callout-content > :first-child {
+  margin-top: 0;
+}
+
+.obsidian-callout .callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* Citation Badges & Bibliography */
+.citation-ref-badge:hover {
+  background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.35);
+  transform: translateY(-1px);
+}
+
+.research-bibliography {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.bibliography-item:target {
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  outline: 1px solid var(--accent-cyan);
+}
+
+/* ==========================================================================
+   WIKILINK ANCHOR / PARAGRAPH BLOCK PULSE HIGHLIGHT ANIMATION
+   ========================================================================== */
+@keyframes anchorHighlightPulse {
+  0% {
+    background-color: color-mix(in srgb, var(--accent-cyan) 35%, transparent);
+    box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.28), 0 0 16px rgba(0, 242, 254, 0.35);
+    border-radius: var(--radius-sm);
+  }
+  60% {
+    background-color: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15), 0 0 8px rgba(0, 242, 254, 0.2);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.hash-target-highlight,
+.prose-content h1:target,
+.prose-content h2:target,
+.prose-content h3:target,
+.prose-content h4:target,
+.prose-content h5:target,
+.prose-content h6:target,
+.prose-content p:target,
+.prose-content [data-block-id]:target {
+  animation: anchorHighlightPulse 2.4s ease-out forwards;
+  scroll-margin-top: 5rem;
+}
+
+
+
+.math-block {
+  margin: var(--space-6) 0;
+  padding: var(--space-5);
+  overflow-x: auto;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  text-align: center;
+}
+
+.math-inline { color: var(--accent-cyan); }
+

@@ -1,0 +1,206 @@
+{
+  "title": "Master Research Walkthrough: The 77-Paper Knowledge Continuum",
+  "nodes": [
+    {
+      "id": "master-title-node",
+      "type": "text",
+      "text": "# \ud83c\udf0c Master Research Walkthrough: The 77-Paper Knowledge Continuum\n\nWelcome to the master navigational roadmap across the edge-cloud continuum and autonomous agentic AI.\n\n**How to navigate**:\n- Click **'Explore Canvas Board \u2192'** on any Track card below to drill directly into its sub-canvas.\n- Follow the labeled arrow connections to traverse the 5 sequential research stages from foundational surveys to autonomous multi-agent networks.",
+      "x": 60,
+      "y": 40,
+      "width": 780,
+      "height": 210,
+      "color": "5"
+    },
+    {
+      "id": "node-canvas-track-1-foundations-surveys",
+      "type": "resource",
+      "resourceId": "canvas:track-1-foundations-surveys",
+      "resourceType": "canvas",
+      "label": "Track 1: Architectural Foundations & Surveys",
+      "text": "12 papers surveying edge-cloud architectures, resource allocation taxonomies, and multi-tier edge models.",
+      "x": 60,
+      "y": 300,
+      "width": 380,
+      "height": 220,
+      "color": "5"
+    },
+    {
+      "id": "node-canvas-track-5-computation-offloading",
+      "type": "resource",
+      "resourceId": "canvas:track-5-computation-offloading",
+      "resourceType": "canvas",
+      "label": "Track 5: Computation Offloading & Heuristics",
+      "text": "12 papers focusing on multi-tier offloading, Pareto fronts (latency vs energy), and WorkflowSim toolkits.",
+      "x": 500,
+      "y": 300,
+      "width": 380,
+      "height": 220,
+      "color": "2"
+    },
+    {
+      "id": "node-canvas-track-2-drl-workflow-scheduling",
+      "type": "resource",
+      "resourceId": "canvas:track-2-drl-workflow-scheduling",
+      "resourceType": "canvas",
+      "label": "Track 2: DRL & Scientific Workflow Scheduling",
+      "text": "29 papers applying Actor-Critic (PPO, DDPG, SAC) to heterogeneous DAG scheduling under deadline constraints.",
+      "x": 940,
+      "y": 300,
+      "width": 380,
+      "height": 220,
+      "color": "6"
+    },
+    {
+      "id": "node-canvas-track-3-agentic-ai-llm-orchestration",
+      "type": "resource",
+      "resourceId": "canvas:track-3-agentic-ai-llm-orchestration",
+      "resourceType": "canvas",
+      "label": "Track 3: Agentic AI & Edge SLMs",
+      "text": "22 papers covering autonomous multi-agent brokers, Small Language Models (TinyLLM), and context compression.",
+      "x": 60,
+      "y": 620,
+      "width": 380,
+      "height": 220,
+      "color": "5"
+    },
+    {
+      "id": "node-canvas-track-4-digital-twins-iiot",
+      "type": "resource",
+      "resourceId": "canvas:track-4-digital-twins-iiot",
+      "resourceType": "canvas",
+      "label": "Track 4: Digital Twins, Vehicular Edge & IIoT",
+      "text": "State synchronization, dynamic vehicle migrations, and cyber-physical systems backed by iFogSim.",
+      "x": 500,
+      "y": 620,
+      "width": 380,
+      "height": 220,
+      "color": "4"
+    },
+    {
+      "id": "node-canvas-track-6-hardware-6g-beamforming",
+      "type": "resource",
+      "resourceId": "canvas:track-6-hardware-6g-beamforming",
+      "resourceType": "canvas",
+      "label": "Track 6: 6G Frontiers & Quantum Fog",
+      "text": "Intelligent Reflecting Surfaces (IRS/RIS), physical layer beamforming, and Quantum-inspired fog (Fog-Quant).",
+      "x": 940,
+      "y": 620,
+      "width": 380,
+      "height": 220,
+      "color": "1"
+    },
+    {
+      "id": "hub-simulation-toolkits",
+      "type": "text",
+      "text": "### \ud83d\udee0\ufe0f Foundational Simulation Toolkits\n- **CloudSim**: Discrete event cloud datacenter simulation\n- **iFogSim (Paper 72)**: Fog & edge resource modeling\n- **WorkflowSim (Paper 65)**: Scientific DAG workflow scheduler with failure models",
+      "color": "3",
+      "x": 60,
+      "y": 920,
+      "width": 380,
+      "height": 200
+    },
+    {
+      "id": "hub-drl-algorithms",
+      "type": "text",
+      "text": "### \ud83e\udde0 DRL Algorithmic Pillars\n- **PPO & DDPG**: Continuous action space scheduling\n- **SAC & TD3**: Entropy-regularized robust offloading\n- **Multi-Agent RL**: Decentralized coordination across fog brokers",
+      "color": "6",
+      "x": 500,
+      "y": 920,
+      "width": 380,
+      "height": 200
+    },
+    {
+      "id": "hub-slm-quantization",
+      "type": "text",
+      "text": "### \u26a1 Edge SLM & Context Efficiency\n- **TinyLLM (Paper 47)**: Quantized SLM execution on micro-edges\n- **Context Compression**: Phased prompt decomposition to prevent token overflow\n- **EdgeShard (Paper 69)**: Collaborative split inference across tiers",
+      "color": "5",
+      "x": 940,
+      "y": 920,
+      "width": 380,
+      "height": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "walkthrough-1-to-5",
+      "fromNode": "node-canvas-track-1-foundations-surveys",
+      "fromSide": "right",
+      "toNode": "node-canvas-track-5-computation-offloading",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "5",
+      "label": "defines taxonomies for"
+    },
+    {
+      "id": "walkthrough-5-to-2",
+      "fromNode": "node-canvas-track-5-computation-offloading",
+      "fromSide": "right",
+      "toNode": "node-canvas-track-2-drl-workflow-scheduling",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "formulates MDPs for"
+    },
+    {
+      "id": "walkthrough-2-to-3",
+      "fromNode": "node-canvas-track-2-drl-workflow-scheduling",
+      "fromSide": "bottom",
+      "toNode": "node-canvas-track-3-agentic-ai-llm-orchestration",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "evolves into autonomous agents"
+    },
+    {
+      "id": "walkthrough-3-to-4",
+      "fromNode": "node-canvas-track-3-agentic-ai-llm-orchestration",
+      "fromSide": "right",
+      "toNode": "node-canvas-track-4-digital-twins-iiot",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "4",
+      "label": "deploys real-time brokers into"
+    },
+    {
+      "id": "walkthrough-4-to-6",
+      "fromNode": "node-canvas-track-4-digital-twins-iiot",
+      "fromSide": "right",
+      "toNode": "node-canvas-track-6-hardware-6g-beamforming",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "1",
+      "label": "relies on ultra-low latency"
+    },
+    {
+      "id": "edge-hub-simulation-5",
+      "fromNode": "hub-simulation-toolkits",
+      "fromSide": "top",
+      "toNode": "node-canvas-track-5-computation-offloading",
+      "toSide": "bottom",
+      "toEnd": "arrow",
+      "color": "3",
+      "label": "WorkflowSim engine"
+    },
+    {
+      "id": "edge-hub-drl-2",
+      "fromNode": "hub-drl-algorithms",
+      "fromSide": "top",
+      "toNode": "node-canvas-track-2-drl-workflow-scheduling",
+      "toSide": "bottom",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "powers DAG heuristics"
+    },
+    {
+      "id": "edge-hub-slm-3",
+      "fromNode": "hub-slm-quantization",
+      "fromSide": "top",
+      "toNode": "node-canvas-track-3-agentic-ai-llm-orchestration",
+      "toSide": "bottom",
+      "toEnd": "arrow",
+      "color": "5",
+      "label": "SLM inference bedrock"
+    }
+  ],
+  "groupingVersion": 1
+}

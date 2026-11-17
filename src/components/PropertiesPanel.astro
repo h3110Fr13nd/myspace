@@ -1,0 +1,117 @@
+---
+import { formatDisplayDate } from '../lib/dateFormat';
+import '../styles/properties-panel.css';
+
+interface Props {
+  metadata: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+const { metadata, createdAt, updatedAt } = Astro.props;
+
+// Keys to always exclude from the display (internal or already shown elsewhere)
+const EXCLUDED_KEYS = new Set([
+  'content', 'password_hash', 'summary', 'description',
+  'isPersonalRoot', 'hasPassword', 'draft', 'isDraft',
+]);
+
+// Keys that appear at the top in a defined order (canonical fields)
+const CANONICAL_ORDER = ['title', 'aliases', 'tags', 'author', 'category', 'date', 'updatedAt', 'permalink', 'lang', 'cssclasses'];
+
+function isDateLike(val: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}/.test(val) || (!isNaN(Date.parse(val)) && val.length > 8);
+}
+
+// Separate canonical keys from custom keys, applying order
+const canonicalEntries: [string, any][] = [];
+const customEntries: [string, any][] = [];
+
+const lowerKeyMap = Object.fromEntries(
+  Object.entries(metadata).map(([k, v]) => [k.toLowerCase(), [k, v]])
+);
+
+// Walk canonical order first
+for (const key of CANONICAL_ORDER) {
+  const hit = lowerKeyMap[key.toLowerCase()];
+  if (hit && !EXCLUDED_KEYS.has(hit[0])) {
+    const [rawKey, val] = hit;
+    if (val !== null && val !== undefined && val !== '') {
+      canonicalEntries.push([rawKey, val]);
+    }
+  }
+}
+
+// Then everything else
+for (const [rawKey, val] of Object.entries(metadata)) {
+  if (EXCLUDED_KEYS.has(rawKey)) continue;
+  if (CANONICAL_ORDER.map(k => k.toLowerCase()).includes(rawKey.toLowerCase())) continue;
+  if (val === null || val === undefined || val === '') continue;
+  customEntries.push([rawKey, val]);
+}
+
+// Inject DB timestamps if not already in metadata
+if (createdAt && !canonicalEntries.find(([k]) => k === 'date')) {
+  canonicalEntries.unshift(['created', createdAt]);
+}
+if (updatedAt) {
+  const hasUpdated = canonicalEntries.find(([k]) => ['updatedAt', 'updated'].includes(k));
+  if (!hasUpdated) canonicalEntries.push(['updated', updatedAt]);
+}
+
+const allEntries = [...canonicalEntries, ...customEntries];
+const hasProperties = allEntries.length > 0;
+---
+
+{hasProperties && (
+  <section class="properties-panel ui-card" aria-label="Note properties">
+    <div class="properties-grid">
+      {allEntries.map(([key, val]) => {
+        // Determine rendered type
+        const isArray = Array.isArray(val);
+        const isBool = typeof val === 'boolean';
+        const isDate = typeof val === 'string' && isDateLike(val);
+        const isNumber = typeof val === 'number';
+        const isString = typeof val === 'string';
+        const displayKey = key
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/[-_]/g, ' ')
+          .trim();
+
+        return (
+          <div class="property-row">
+            <div class="property-key" title={key}>{displayKey}</div>
+            <div class="property-value">
+              {isArray && (
+                <div class="property-pill-list">
+                  {(val as any[]).map((item) => (
+                    <span class="ui-badge property-pill">
+                      {typeof item === 'string' && (key === 'tags' || key === 'tag')
+                        ? <a href={`/tags/${encodeURIComponent(item.toLowerCase())}`} class="property-pill-link">#{item}</a>
+                        : String(item)
+                      }
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!isArray && isBool && (
+                <span class={`ui-badge property-badge ${val ? 'badge-true' : 'badge-false'}`}>
+                  {val ? '✓ Yes' : '✗ No'}
+                </span>
+              )}
+              {!isArray && !isBool && isDate && (
+                <span class="property-date">{formatDisplayDate(String(val))}</span>
+              )}
+              {!isArray && !isBool && !isDate && (isString || isNumber) && (
+                <span class="property-text">{String(val)}</span>
+              )}
+              {!isArray && !isBool && !isDate && !isString && !isNumber && (
+                <span class="property-text property-complex">{JSON.stringify(val)}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </section>
+)}

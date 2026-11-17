@@ -1,0 +1,145 @@
+// Grafana Alloy — single agent for logs + traces (and metrics, if enabled).
+//
+// Topology: docker_sd -> loki.source.docker -> loki.write (Loki)
+//           otelcol.receiver.otlp -> batch -> otlp (Tempo)
+//
+// Production migration: point the exporters at hosted backends and ship this
+// same config as a DaemonSet. No application change is required — the app only
+// knows OTLP/HTTP and stdout log streams.
+
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+// ─── Logs: every container's stdout -> Loki ──────────────────────────────────
+discovery.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "10s"
+}
+
+// Scope to this compose project and turn docker's __meta_* labels into the two
+// labels every Grafana query keys off: `service` and `project`.
+discovery.relabel "logs" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		regex         = "workspace-stack"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		target_label  = "project"
+	}
+
+	rule {
+		action = "labeldrop"
+		regex  = "__address__"
+	}
+}
+
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.logs.output
+	forward_to = [loki.process.json.receiver]
+}
+
+// pino already emits one JSON object per line; parse it so Grafana can filter on
+// level/status as first-class fields instead of a raw string blob. Non-JSON
+// container output (postgres, openfga, loki) is kept verbatim.
+loki.process "json" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.json {
+		expressions = {
+			level      = "level",
+			trace_id   = "trace_id",
+			span_id    = "span_id",
+			status     = "status",
+			route      = "route",
+			method     = "method",
+			durationMs = "durationMs",
+			msg        = "msg",
+		}
+	}
+
+	// Promote ONLY low-cardinality fields to labels. `trace_id`, `url` and
+	// `durationMs` are unique per request — as labels they would create a new
+	// Loki stream for every request and blow up the index. Those stay
+	// query-time fields: `| json | trace_id="..."`.
+	stage.labels {
+		values = {
+			level  = "",
+			status = "",
+		}
+	}
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
+
+// ─── Traces: OTLP/HTTP from the app -> Tempo ─────────────────────────────────
+// Metrics are intentionally absent: Prometheus scrapes the app directly, which
+// is the smallest topology that works locally. To move to Grafana's production
+// agent layout, add a `prometheus.scrape` + `prometheus.remote_write` pair and
+// route this receiver's `metrics` output through a second batch processor.
+
+otelcol.processor.memory_limiter "traces" {
+	check_interval = "2s"
+
+	limit = "96MiB"
+
+	output {
+		traces = [otelcol.processor.batch.traces.input]
+	}
+}
+
+otelcol.processor.batch "traces" {
+	timeout             = "2s"
+	send_batch_size     = 512
+	send_batch_max_size = 1024
+
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
+otelcol.receiver.otlp "default" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		traces = [otelcol.processor.memory_limiter.traces.input]
+	}
+}

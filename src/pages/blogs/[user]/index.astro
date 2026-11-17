@@ -1,0 +1,393 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getResourceIcon, resolveResourceType } from '../../../lib/registry/resourceRegistry';
+import { query } from '../../../lib/db';
+import { filterViewableResources } from '../../../lib/permissions';
+import { buildResourcePath } from '../../../lib/resourceUrls';
+
+const { user = 'anonymous' } = Astro.params;
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+// Resolve owner_id from username segment ("demo" → "user:demo")
+const ownerId = user.includes(':') ? user : `user:${user}`;
+
+function getTypeLabel(type: string): string {
+  return resolveResourceType({ type }).label;
+}
+
+// Fetch all resources owned by this user (all types — every resource is a graph node)
+let allResources: any[] = [];
+let dbError = false;
+try {
+  const res = await query(
+    `SELECT r.id, r.type, r.title, r.metadata, r.is_public, r.created_at, r.updated_at,
+            r.parent_id,
+            -- Count direct links FROM this node (wikilinks in metadata)
+            (SELECT COUNT(*) FROM resources r2 
+             WHERE r2.metadata->'wikilinks' ? split_part(r.id, ':', 2)) AS backlink_count
+     FROM resources r
+     WHERE r.owner_id = $1
+       AND r.type != 'folder'
+     ORDER BY r.updated_at DESC NULLS LAST, r.created_at DESC NULLS LAST`,
+    [ownerId]
+  );
+  allResources = res.rows || [];
+} catch (e: any) {
+  console.error('[Blog Index] DB error:', e.message);
+  dbError = true;
+}
+
+// Permission-filter: only show resources the currentUser can view
+const visibleResources = await filterViewableResources(allResources, currentUser);
+
+// Group resources by type for the sectioned display
+const grouped: Record<string, any[]> = {};
+for (const r of visibleResources) {
+  const t = r.type || 'document';
+  if (!grouped[t]) grouped[t] = [];
+  grouped[t].push(r);
+}
+
+// Sort type groups: blog first, then document, then rest alphabetically
+const TYPE_ORDER = ['blog', 'document', 'pdf', 'canvas', 'image', 'sheet', 'form', 'collection'];
+const sortedGroups = Object.keys(grouped).sort((a, b) => {
+  const ia = TYPE_ORDER.indexOf(a);
+  const ib = TYPE_ORDER.indexOf(b);
+  if (ia !== -1 && ib !== -1) return ia - ib;
+  if (ia !== -1) return -1;
+  if (ib !== -1) return 1;
+  return a.localeCompare(b);
+});
+
+function formatDate(d: string | null): string {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+---
+
+<BaseLayout
+  title={`Vault: @${user} · FOSS Workspace`}
+  description={`Public vault and resource graph for ${ownerId} — notes, PDFs, canvases, and research resources.`}
+  currentUser={currentUser}
+>
+    <div class="container">
+
+      <!-- Vault Header -->
+      <div class="ui-card vault-header">
+        <div class="vault-header-row">
+          <div>
+            <span class="vault-header-eyebrow">Resource Graph Vault</span>
+            <h1 class="vault-header-title">@{user}</h1>
+            <p class="vault-header-count">
+              {visibleResources.length} resource{visibleResources.length !== 1 ? 's' : ''} visible to you
+              {currentUser !== ownerId && <span class="vault-header-viewer"> as <code>{currentUser}</code></span>}
+            </p>
+          </div>
+          <div class="vault-header-actions">
+            <a href={`/blogs/${user}/feed.xml`} class="glass-button vault-header-feed">
+              📡 RSS Feed
+            </a>
+          </div>
+        </div>
+
+        <!-- Resource type counts chips -->
+        {sortedGroups.length > 0 && (
+          <div class="type-counts">
+            {sortedGroups.map((t) => {
+              return (
+                <span class="type-count">
+                  {getResourceIcon(t)} {grouped[t].length} {getTypeLabel(t)}{grouped[t].length !== 1 ? 's' : ''}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {dbError && (
+        <div class="db-error">
+          ⚠️ Database unavailable — could not load vault resources.
+        </div>
+      )}
+
+      {!dbError && visibleResources.length === 0 && (
+        <div class="ui-card vault-empty">
+          <div class="vault-empty-icon">🌱</div>
+          <div class="vault-empty-title">Empty Vault</div>
+          <div class="vault-empty-text">No resources visible to <code>{currentUser}</code> in @{user}'s vault.</div>
+        </div>
+      )}
+
+      <!-- Resource Groups by Type -->
+      {sortedGroups.map((typeKey) => {
+        const label = getTypeLabel(typeKey);
+        const items = grouped[typeKey];
+        return (
+          <div class="type-group">
+            <div class="type-group-head">
+              <span class="type-group-icon">{getResourceIcon(typeKey)}</span>
+              <span class="type-group-label">{label}s</span>
+              <span class="type-group-count">({items.length})</span>
+            </div>
+
+            <div class="type-group-items">
+              {items.map((r: any) => {
+                const docUrl = buildResourcePath(r, r.path);
+                const tags: string[] = r.metadata?.tags || [];
+                const wikilinks: string[] = r.metadata?.wikilinks || [];
+                const isPublic = r.is_public;
+                const summary = r.metadata?.summary || r.metadata?.description || '';
+                const attachedId = r.metadata?.attachedResourceId;
+                const tier = r.metadata?.tier || 'free';
+
+                return (
+                  <a href={docUrl} class="resource-row">
+                    <div class="resource-row-main">
+                      <div class="resource-row-content">
+                        <div class="resource-row-badges">
+                          <span class:list={['ui-badge', 'resource-badge', {
+                            'ui-badge--success': typeKey === 'blog',
+                            'ui-badge--danger': typeKey === 'pdf',
+                            'ui-badge--info': typeKey !== 'blog' && typeKey !== 'pdf',
+                          }]}>{label}</span>
+                          {isPublic && <span class="ui-badge ui-badge--success resource-badge">public</span>}
+                          {tier !== 'free' && <span class="ui-badge ui-badge--danger resource-badge">{tier}</span>}
+                          {attachedId && (
+                            <span class="resource-row-attachment">
+                              📎 {attachedId.split(':')[0]}
+                            </span>
+                          )}
+                        </div>
+                        <div class="resource-row-title">{r.title}</div>
+                        {summary && (
+                          <p class="resource-row-summary">
+                            {summary}
+                          </p>
+                        )}
+                      </div>
+
+                      <div class="resource-row-side">
+                        <span>{formatDate(r.updated_at || r.created_at)}</span>
+                        {wikilinks.length > 0 && (
+                          <span>🔗 {wikilinks.length} link{wikilinks.length !== 1 ? 's' : ''}</span>
+                        )}
+                        {Number(r.backlink_count) > 0 && (
+                          <span>← {r.backlink_count} backlink{Number(r.backlink_count) !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {tags.length > 0 && (
+                      <div class="resource-row-tags">
+                        {tags.map((tag: string) => (
+                          <span class="resource-row-tag">#{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+    </div>
+
+    <style>
+      .vault-header {
+        padding: 2rem;
+        margin-bottom: 2rem;
+      }
+      .vault-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+      .vault-header-eyebrow {
+        font-size: 0.78rem;
+        color: var(--accent-cyan);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .vault-header-title {
+        font-size: 2rem;
+        color: #fff;
+        margin: 0.25rem 0 0.5rem 0;
+      }
+      .vault-header-count {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        margin: 0;
+      }
+      .vault-header-viewer {
+        color: var(--text-muted);
+        font-size: 0.8rem;
+      }
+      .vault-header-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .vault-header-feed {
+        padding: 6px 14px;
+        font-size: 0.8rem;
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+      }
+      .type-counts {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-glass);
+      }
+      .type-count {
+        font-size: 0.75rem;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        color: var(--text-secondary);
+      }
+      .vault-empty {
+        padding: 3rem;
+        text-align: center;
+        color: var(--text-muted);
+      }
+      .vault-empty-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+      }
+      .vault-empty-title {
+        font-size: 1.1rem;
+        color: var(--text-secondary);
+        font-weight: 600;
+      }
+      .vault-empty-text {
+        font-size: 0.88rem;
+        margin-top: 0.5rem;
+      }
+      .type-group {
+        margin-bottom: 2rem;
+      }
+      .type-group-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-glass);
+      }
+      .type-group-icon {
+        font-size: 1rem;
+      }
+      .type-group-label {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--accent-cyan);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .type-group-count {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+      .type-group-items {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .resource-badge {
+        font-size: 0.68rem;
+        padding: 2px 8px;
+      }
+      .resource-row {
+        display: block;
+        text-decoration: none;
+        padding: 1.25rem 1.5rem;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border-glass);
+        border-radius: 12px;
+        transition: all 0.2s ease;
+      }
+      .resource-row:hover {
+        border-color: var(--accent-primary) !important;
+        background: rgba(99, 102, 241, 0.06) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+      }
+      .resource-row-main {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .resource-row-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .resource-row-badges {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.35rem;
+        flex-wrap: wrap;
+      }
+      .resource-row-attachment {
+        font-size: 0.7rem;
+        color: var(--accent-cyan);
+        background: rgba(0, 242, 254, 0.1);
+        padding: 2px 8px;
+        border-radius: 9999px;
+        border: 1px solid rgba(0, 242, 254, 0.25);
+      }
+      .resource-row-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .resource-row-summary {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin: 0.3rem 0 0 0;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .resource-row-side {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.35rem;
+        flex-shrink: 0;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+      .resource-row-tags {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 0.6rem;
+      }
+      .resource-row-tag {
+        font-size: 0.7rem;
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        padding: 2px 8px;
+        border-radius: 9999px;
+        color: var(--text-secondary);
+      }
+    </style>
+</BaseLayout>
+

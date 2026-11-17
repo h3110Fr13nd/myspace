@@ -1,0 +1,132 @@
+{
+  "nodes": [
+    {
+      "id": "header-track-4-digital-twins-iiot",
+      "type": "text",
+      "text": "# Track 4: Digital Twins, Vehicular Edge & Industrial IoT\n\nState synchronization, vehicular edge computing (IoV), dynamic migration, and cyber-physical systems.\n\n**Total Papers**: 5 curated research studies.",
+      "x": 40,
+      "y": 40,
+      "width": 520,
+      "height": 180,
+      "color": "4"
+    },
+    {
+      "id": "group-track-4-digital-twins-iiot-0",
+      "type": "group",
+      "label": "Vehicular Edge Intelligence & Simulation (iFogSim) (2 papers)",
+      "x": 36,
+      "y": 296,
+      "width": 838,
+      "height": 298,
+      "color": "4"
+    },
+    {
+      "id": "paper-6",
+      "type": "resource",
+      "resourceId": "paper:paper-06-collaborative-deep-neural-network-inference-v",
+      "resourceType": "paper",
+      "label": "P06: Collaborative deep neural network inference via ...",
+      "x": 60,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "4",
+      "parentId": "group-track-4-digital-twins-iiot-0"
+    },
+    {
+      "id": "paper-72",
+      "type": "resource",
+      "resourceId": "paper:paper-72-ifogsim-a-toolkit-for-modeling-and-simulation",
+      "resourceType": "paper",
+      "label": "P72: iFogSim: A toolkit for modeling and simulation o...",
+      "x": 470,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "4",
+      "parentId": "group-track-4-digital-twins-iiot-0"
+    },
+    {
+      "id": "group-track-4-digital-twins-iiot-1",
+      "type": "group",
+      "label": "Digital Twin Synchronization & CPS/IoT Offloading (3 papers)",
+      "x": 36,
+      "y": 716,
+      "width": 838,
+      "height": 578,
+      "color": "2"
+    },
+    {
+      "id": "paper-22",
+      "type": "resource",
+      "resourceId": "paper:paper-22-digital-twin-empowered-task-offloading-for-mo",
+      "resourceType": "paper",
+      "label": "P22: Digital Twin Empowered Task Offloading for Mobil...",
+      "x": 60,
+      "y": 740,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-4-digital-twins-iiot-1"
+    },
+    {
+      "id": "paper-23",
+      "type": "resource",
+      "resourceId": "paper:paper-23-deep-reinforcement-learning-for-mobility-awar",
+      "resourceType": "paper",
+      "label": "P23: Deep Reinforcement Learning for Mobility-Aware D...",
+      "x": 470,
+      "y": 740,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-4-digital-twins-iiot-1"
+    },
+    {
+      "id": "paper-50",
+      "type": "resource",
+      "resourceId": "paper:paper-50-agentic-llm-assisted-edge-ai-for-cpsiot-appli",
+      "resourceType": "paper",
+      "label": "P50: Agentic LLM-Assisted Edge AI for CPS/IoT Applica...",
+      "x": 60,
+      "y": 1020,
+      "width": 380,
+      "height": 250,
+      "color": "2",
+      "parentId": "group-track-4-digital-twins-iiot-1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-paper-6-paper-72",
+      "fromNode": "paper-6",
+      "fromSide": "right",
+      "toNode": "paper-72",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "4",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-22-paper-23",
+      "fromNode": "paper-22",
+      "fromSide": "right",
+      "toNode": "paper-23",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-23-paper-50",
+      "fromNode": "paper-23",
+      "fromSide": "bottom",
+      "toNode": "paper-50",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "2",
+      "label": "compares with"
+    }
+  ],
+  "groupingVersion": 1
+}

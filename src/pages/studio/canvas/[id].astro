@@ -1,0 +1,114 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { CanvasEditor } from '../../../components/canvas/CanvasEditor';
+import { query } from '../../../lib/db';
+import { canUserViewResource } from '../../../lib/permissions';
+import {
+  resolveCanvasSource,
+  describeMissingCanvas,
+  type CanvasSourceDbRow,
+} from '../../../lib/canvas/canvasResolver';
+import * as fs from 'fs';
+import * as path from 'path';
+import 'katex/dist/katex.min.css';
+
+const rawId = Astro.params.id || 'master-research-walkthrough';
+const cleanId = decodeURIComponent(rawId)
+  .replace(/^canvas[:\/]/, '')
+  .replace(/^public_vault\/canvas\//, '')
+  .replace(/\.canvas$/, '');
+const canvasResourceId = `canvas:${cleanId}`;
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+// Pre-fetch canvas data on SSR if available.
+//
+// A canvas can exist in three places at once: a `resources` row, a
+// `content/public_vault/canvas/<slug>.canvas` file, and neither. The precedence
+// lives in `resolveCanvasSource` so it is unit-tested rather than re-derived
+// here — getting it wrong is invisible, because the board still mounts and
+// simply has nothing on it.
+let dbRow: CanvasSourceDbRow | null = null;
+
+try {
+  const dbRes = await query(
+    `SELECT id, type, owner_id, title, metadata, is_public, is_draft 
+     FROM resources 
+     WHERE id = $1 OR id = $2 OR metadata->>'slug' = $3 LIMIT 1`,
+    [canvasResourceId, cleanId, cleanId]
+  );
+
+  if (dbRes.rows && dbRes.rows.length > 0) {
+    const row = dbRes.rows[0];
+    if (await canUserViewResource(row, currentUser)) {
+      dbRow = { title: row.title, metadata: row.metadata };
+    }
+  }
+} catch (err) {
+  // A database outage must not make an existing canvas look empty.
+  console.warn('[Studio SSR] Failed to pre-fetch canvas:', err);
+}
+
+let diskData: { nodes: any[]; edges: any[]; title?: string } | null = null;
+try {
+  const diskPath = path.join(process.cwd(), 'content', 'public_vault', 'canvas', `${cleanId}.canvas`);
+  if (fs.existsSync(diskPath)) {
+    diskData = JSON.parse(fs.readFileSync(diskPath, 'utf-8'));
+  }
+} catch (err) {
+  console.warn(`[Studio SSR] ${cleanId}.canvas on disk is not valid JSON:`, err);
+}
+
+const resolved = resolveCanvasSource({
+  dbRow,
+  disk: diskData,
+  fallbackTitle: cleanId.replace(/[-_]/g, ' '),
+});
+
+const initialData = resolved.data;
+const canvasTitle = resolved.title ?? cleanId.replace(/[-_]/g, ' ');
+const loadError = initialData ? null : describeMissingCanvas(cleanId);
+
+if (resolved.dbRowWasEmpty && resolved.origin === 'disk') {
+  console.warn(
+    `[Studio SSR] ${cleanId}: the resources row has no canvasData, so the on-disk file was used. ` +
+      'The two copies have diverged; the DB copy is the one that will be overwritten on save.'
+  );
+}
+---
+
+<BaseLayout
+  title={`🎨 Studio: ${canvasTitle} | Spatial Canvas Editor`}
+  currentUser={currentUser}
+  showTopBar={false}
+  noMainWrapper={true}
+>
+  <Fragment slot="extraHead">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style is:global>
+      body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none;
+        background-color: #090d16;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      }
+    </style>
+    <script is:inline>
+      // Canvas Studio is a hardcoded dark surface; align token-powered UI (modals,
+      // drawers, inputs) to the dark shell instead of inheriting the light theme.
+      document.documentElement.setAttribute('data-theme', 'dark');
+    </script>
+  </Fragment>
+
+  <CanvasEditor
+    client:only="react"
+    canvasId={canvasResourceId}
+    initialData={initialData}
+    currentUser={currentUser}
+    loadError={loadError}
+  />
+</BaseLayout>

@@ -1,0 +1,104 @@
+/* Hallmark · v2.0.0 · existing workspace UI · tokenized component polish */
+/* Critique: internal author IDs and emoji controls obscured useful page context. */
+.content-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-1) var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.meta-subtext-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.meta-subtext-author,
+.meta-subtext-time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.meta-subtext-author {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.meta-subtext-time {
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
+.meta-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.meta-sep {
+  color: var(--text-muted);
+}
+
+.meta-tags-inline,
+.meta-subtext-right {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.meta-tag-mini-pill {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+
+.meta-tag-mini-pill:hover {
+  border-color: var(--accent-cyan);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.meta-tag-mini-pill:focus-visible {
+  outline: 2px solid var(--control-focus);
+  outline-offset: 2px;
+}
+
+.meta-tag-mini-pill:active {
+  transform: translateY(1px);
+}
+
+.properties-trigger-icon,
+.properties-trigger-arrow {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.properties-trigger-arrow {
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.properties-trigger-btn[aria-expanded="true"] .properties-trigger-arrow {
+  transform: rotate(180deg);
+}
+
+.properties-dropdown-container {
+  margin-bottom: var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .properties-trigger-arrow {
+    transition: none;
+  }
+}

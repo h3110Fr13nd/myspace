@@ -1,0 +1,270 @@
+{
+  "nodes": [
+    {
+      "id": "header-track-1-foundations-surveys",
+      "type": "text",
+      "text": "# Track 1: Architectural Foundations & Comprehensive Surveys\n\nCore surveys establishing the edge-cloud continuum, resource scheduling taxonomy, and multi-tier paradigms.\n\n**Total Papers**: 12 curated research studies.",
+      "x": 40,
+      "y": 40,
+      "width": 520,
+      "height": 180,
+      "color": "5"
+    },
+    {
+      "id": "group-track-1-foundations-surveys-0",
+      "type": "group",
+      "label": "Foundational Overviews & Taxonomies (4 papers)",
+      "x": 36,
+      "y": 296,
+      "width": 838,
+      "height": 578,
+      "color": "5"
+    },
+    {
+      "id": "paper-15",
+      "type": "resource",
+      "resourceId": "paper:paper-15-resource-scheduling-in-edge-computing-archite",
+      "resourceType": "paper",
+      "label": "P15: Resource Scheduling in Edge Computing: Architect...",
+      "x": 60,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "5",
+      "parentId": "group-track-1-foundations-surveys-0"
+    },
+    {
+      "id": "paper-21",
+      "type": "resource",
+      "resourceId": "paper:paper-21-a-survey-of-edge-computing-resource-allocatio",
+      "resourceType": "paper",
+      "label": "P21: A Survey of Edge Computing Resource Allocation a...",
+      "x": 470,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "5",
+      "parentId": "group-track-1-foundations-surveys-0"
+    },
+    {
+      "id": "paper-75",
+      "type": "resource",
+      "resourceId": "paper:paper-75-optimizing-task-offloading-with-metaheuristic",
+      "resourceType": "paper",
+      "label": "P75: Optimizing task offloading with metaheuristic al...",
+      "x": 60,
+      "y": 600,
+      "width": 380,
+      "height": 250,
+      "color": "5",
+      "parentId": "group-track-1-foundations-surveys-0"
+    },
+    {
+      "id": "paper-77",
+      "type": "resource",
+      "resourceId": "paper:paper-77-ai-augmented-edge-and-fog-computing-trends-an",
+      "resourceType": "paper",
+      "label": "P77: AI augmented Edge and Fog computing: Trends and ...",
+      "x": 470,
+      "y": 600,
+      "width": 380,
+      "height": 250,
+      "color": "5",
+      "parentId": "group-track-1-foundations-surveys-0"
+    },
+    {
+      "id": "group-track-1-foundations-surveys-1",
+      "type": "group",
+      "label": "Edge Intelligence & Agentic Surveys (7 papers)",
+      "x": 36,
+      "y": 996,
+      "width": 838,
+      "height": 1138,
+      "color": "6"
+    },
+    {
+      "id": "paper-43",
+      "type": "resource",
+      "resourceId": "paper:paper-43-agentic-graph-neural-networks-for-wireless-co",
+      "resourceType": "paper",
+      "label": "P43: Agentic Graph Neural Networks for Wireless Commu...",
+      "x": 60,
+      "y": 1020,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    },
+    {
+      "id": "paper-44",
+      "type": "resource",
+      "resourceId": "paper:paper-44-edge-general-intelligence-through-world-model",
+      "resourceType": "paper",
+      "label": "P44: Edge General Intelligence Through World Models a...",
+      "x": 470,
+      "y": 1020,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    },
+    {
+      "id": "paper-45",
+      "type": "resource",
+      "resourceId": "paper:paper-45-secure-multi-llm-agentic-ai-and-agentificatio",
+      "resourceType": "paper",
+      "label": "P45: Secure Multi-LLM Agentic AI and Agentification f...",
+      "x": 60,
+      "y": 1300,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    },
+    {
+      "id": "paper-55",
+      "type": "resource",
+      "resourceId": "paper:paper-55-communication-efficient-agentic-edge-intellig",
+      "resourceType": "paper",
+      "label": "P55: Communication-Efficient Agentic Edge Intelligenc...",
+      "x": 470,
+      "y": 1300,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    },
+    {
+      "id": "paper-61",
+      "type": "resource",
+      "resourceId": "paper:paper-61-the-road-toward-general-edge-intelligence-sta",
+      "resourceType": "paper",
+      "label": "P61: The Road Toward General Edge Intelligence: Stand...",
+      "x": 60,
+      "y": 1580,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    },
+    {
+      "id": "paper-62",
+      "type": "resource",
+      "resourceId": "paper:paper-62-mobile-edge-intelligence-for-large-language-m",
+      "resourceType": "paper",
+      "label": "P62: Mobile Edge Intelligence for Large Language Mode...",
+      "x": 470,
+      "y": 1580,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    },
+    {
+      "id": "paper-68",
+      "type": "resource",
+      "resourceId": "paper:paper-68-toward-democratized-generative-ai-in-next-gen",
+      "resourceType": "paper",
+      "label": "P68: Toward Democratized Generative AI in Next-Genera...",
+      "x": 60,
+      "y": 1860,
+      "width": 380,
+      "height": 250,
+      "color": "6",
+      "parentId": "group-track-1-foundations-surveys-1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-paper-15-paper-21",
+      "fromNode": "paper-15",
+      "fromSide": "right",
+      "toNode": "paper-21",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "5",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-21-paper-75",
+      "fromNode": "paper-21",
+      "fromSide": "bottom",
+      "toNode": "paper-75",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "5",
+      "label": "compares with"
+    },
+    {
+      "id": "edge-paper-75-paper-77",
+      "fromNode": "paper-75",
+      "fromSide": "right",
+      "toNode": "paper-77",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "5",
+      "label": "extends"
+    },
+    {
+      "id": "edge-paper-43-paper-44",
+      "fromNode": "paper-43",
+      "fromSide": "right",
+      "toNode": "paper-44",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-44-paper-45",
+      "fromNode": "paper-44",
+      "fromSide": "bottom",
+      "toNode": "paper-45",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "compares with"
+    },
+    {
+      "id": "edge-paper-45-paper-55",
+      "fromNode": "paper-45",
+      "fromSide": "right",
+      "toNode": "paper-55",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "extends"
+    },
+    {
+      "id": "edge-paper-55-paper-61",
+      "fromNode": "paper-55",
+      "fromSide": "bottom",
+      "toNode": "paper-61",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-61-paper-62",
+      "fromNode": "paper-61",
+      "fromSide": "right",
+      "toNode": "paper-62",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "compares with"
+    },
+    {
+      "id": "edge-paper-62-paper-68",
+      "fromNode": "paper-62",
+      "fromSide": "bottom",
+      "toNode": "paper-68",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "6",
+      "label": "extends"
+    }
+  ],
+  "groupingVersion": 1
+}

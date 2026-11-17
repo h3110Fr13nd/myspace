@@ -1,0 +1,66 @@
+# Loki — single-binary, filesystem storage, tuned for a laptop.
+# Production: swap the filesystem block for object_storage + replication_factor
+# and raise compactor.retention_period. Nothing else changes.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+
+limits_config:
+  retention_period: 48h
+  max_query_lookback: 48h
+  max_query_parallelism: 2
+  # Alloy tails whole container log files, so on a first run it replays whatever
+  # history docker still holds. Accept it and let the compactor age it out
+  # instead of erroring on every batch.
+  reject_old_samples: false
+  volume_enabled: true
+  allow_structured_metadata: true
+  # Docker's default json-file driver has no rotation, so a long-lived local
+  # stack can hand us a large archive to ingest in one burst.
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  per_stream_rate_limit: 8mb
+  per_stream_rate_limit_burst: 16mb
+  max_global_streams_per_user: 5000
+  max_streams_per_user: 200
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 10
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

@@ -1,0 +1,29 @@
+---
+interface Props {
+  type?: 'note' | 'tip' | 'important' | 'warning' | 'caution';
+  title?: string;
+}
+
+const { type = 'note', title } = Astro.props;
+
+const colorMap = {
+  note: { border: '#06b6d4', bg: 'rgba(6, 182, 212, 0.1)', icon: 'ℹ️' },
+  tip: { border: '#10b981', bg: 'rgba(16, 185, 129, 0.1)', icon: '💡' },
+  important: { border: '#6366f1', bg: 'rgba(99, 102, 241, 0.1)', icon: '📌' },
+  warning: { border: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)', icon: '⚠️' },
+  caution: { border: '#f43f5e', bg: 'rgba(244, 63, 94, 0.1)', icon: '🚨' },
+};
+
+const style = colorMap[type] || colorMap.note;
+---
+
+<div style={`margin: 1.5rem 0; padding: 1.25rem; border-left: 4px solid ${style.border}; background: ${style.bg}; border-radius: 0 12px 12px 0; backdrop-filter: blur(8px);`}>
+  <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; margin-bottom: 6px; color: #fff; font-family: var(--font-heading);">
+    <span>{style.icon}</span>
+    <span>{title || type.toUpperCase()}</span>
+  </div>
+  <div style="font-size: 0.95rem; color: var(--text-secondary);">
+    <slot />
+  </div>
+</div>
+

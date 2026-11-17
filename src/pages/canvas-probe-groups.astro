@@ -1,0 +1,42 @@
+---
+import '../styles/global.css';
+import { CanvasEditor } from '../components/canvas/CanvasEditor';
+import type { JsonCanvasSpec } from '../components/canvas/types';
+
+/**
+ * Fixture for the group-tree surfaces: nesting, a structural group with a
+ * member outside its frame, and a root-level node available to drag in.
+ *
+ * Membership is stated with `parentId`, which is the model the board now reads.
+ */
+const data: JsonCanvasSpec = {
+  // Membership below is stated, not inferred: this fixture stands in for a
+  // migrated document, so `normalise` must not re-derive it from geometry.
+  groupingVersion: 1,
+  nodes: [
+    // A nested pair: a spatial group inside a spatial group.
+    { id: 'grp', type: 'group', x: 100, y: 100, width: 700, height: 500, label: 'Outer' },
+    { id: 'inner', type: 'group', x: 140, y: 140, width: 400, height: 300, label: 'Inner', parentId: 'grp' },
+    { id: 'kid1', type: 'text', x: 170, y: 170, width: 160, height: 100, text: 'K1', parentId: 'inner' },
+    { id: 'kid2', type: 'text', x: 350, y: 170, width: 160, height: 100, text: 'K2', parentId: 'inner' },
+    { id: 'sib', type: 'text', x: 170, y: 300, width: 160, height: 100, text: 'Sib', parentId: 'grp' },
+
+    // A structural group whose second member deliberately sits outside the
+    // frame, so the "outside" marker has something to report.
+    { id: 'sgrp', type: 'group', x: 1200, y: 100, width: 400, height: 300, label: 'Structural', membership: 'structural' },
+    { id: 'skid', type: 'text', x: 1240, y: 140, width: 160, height: 100, text: 'In', parentId: 'sgrp' },
+    { id: 'far', type: 'text', x: 1900, y: 700, width: 160, height: 100, text: 'Out', parentId: 'sgrp' },
+
+    // A plain root, for the drag-into-a-group test.
+    { id: 'loose', type: 'text', x: 2000, y: 200, width: 200, height: 120, text: 'Loose' },
+  ],
+  edges: [
+    { id: 'e1', fromNode: 'kid1', toNode: 'kid2', toEnd: 'arrow' },
+    { id: 'e2', fromNode: 'sib', toNode: 'skid', toEnd: 'arrow' },
+  ],
+};
+---
+<html lang="en"><head><meta charset="utf-8" /><title>group outline probe</title></head>
+<body style="margin:0;height:100vh"><div id="root" style="height:100vh">
+  <CanvasEditor client:only="react" canvasId="groups-probe" initialData={data} />
+</div></body></html>

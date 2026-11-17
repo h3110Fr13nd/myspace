@@ -1,0 +1,64 @@
+{
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "text",
+      "text": "# System Architecture Overview\nThis spatial canvas links all core workspace documents, PDFs, sheets, and dynamic forms.",
+      "x": 40,
+      "y": 40,
+      "width": 320,
+      "height": 200,
+      "color": "1",
+      "resourceId": "document:arch_doc"
+    },
+    {
+      "id": "node_2",
+      "type": "file",
+      "file": "vault/pdf/q3_contract.pdf",
+      "x": 420,
+      "y": 40,
+      "width": 340,
+      "height": 220,
+      "color": "2",
+      "resourceId": "pdf:q3_contract"
+    },
+    {
+      "id": "node_4",
+      "type": "file",
+      "file": "vault/forms/feedback.json",
+      "x": 440,
+      "y": 280,
+      "width": 320,
+      "height": 220,
+      "color": "4",
+      "resourceId": "form:feedback_v1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1_2",
+      "fromNode": "node_1",
+      "fromSide": "right",
+      "toNode": "node_2",
+      "toSide": "left",
+      "label": "specifies terms for"
+    },
+    {
+      "id": "edge_1_3",
+      "fromNode": "node_1",
+      "fromSide": "bottom",
+      "toNode": "node_3",
+      "toSide": "top",
+      "label": "allocates budget to"
+    },
+    {
+      "id": "edge_3_4",
+      "fromNode": "node_3",
+      "fromSide": "right",
+      "toNode": "node_4",
+      "toSide": "left",
+      "label": "feeds feedback to"
+    }
+  ],
+  "groupingVersion": 1
+}

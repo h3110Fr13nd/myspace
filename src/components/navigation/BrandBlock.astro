@@ -1,0 +1,41 @@
+---
+/**
+ * Product identity block. Lives at the top of the vault explorer in the
+ * workspace, and as a compact single line in the standalone-page top bar.
+ * Note: no nested anchors (the previous header nested the version badge
+ * inside the brand link, which browsers hoist out of the parent anchor).
+ */
+import { APP_VERSION, getGitCommitSha } from '../../lib/version';
+
+interface Props {
+  /** Compact drops the tagline and the logo mark for a single-line bar. */
+  compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+const commitSha = getGitCommitSha();
+---
+
+<div class:list={['brand-block', compact && 'brand-block--compact']}>
+  {!compact && (
+    <a href="/" class="brand-block__mark" aria-label="FOSS Content home">W</a>
+  )}
+  <span class="brand-block__meta">
+    <span class="brand-block__title-row">
+      <a href="/" class="brand-block__title">FOSS Content</a>
+      <a
+        href="/api/v1/health"
+        target="_blank"
+        rel="noreferrer"
+        class="brand-block__version"
+        title={`System Status: Healthy • Version ${APP_VERSION} • Commit ${commitSha}`}
+      >
+        <span class="brand-block__version-dot"></span>
+        v{APP_VERSION}
+      </a>
+    </span>
+    {!compact && (
+      <span class="brand-block__tagline">Open Research &amp; Knowledge Workspace</span>
+    )}
+  </span>
+</div>

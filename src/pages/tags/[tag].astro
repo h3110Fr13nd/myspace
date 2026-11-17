@@ -1,0 +1,184 @@
+---
+/**
+ * A tag is a resource too: the same shell, the same content column, and a body
+ * resolved by `resolveDynamicBody` (a tagged index/readme note if there is one,
+ * otherwise a generated prose listing grouped by resource type).
+ *
+ * Permissions: tag results come from the same verified candidate set as the
+ * explorer, so the page never exposes a resource the reader cannot open.
+ * A tag with no visible resources renders an empty note rather than an error.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ResourceShell from '../../components/ResourceShell.astro';
+import { FolderTree } from '../../components/FolderTree';
+import { GraphContainer } from '../../components/GraphContainer';
+import { Tag } from 'lucide-react';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { TableOfContents } from '../../components/TableOfContents';
+import {
+  filterViewableResources,
+  listWorkspaceResourceCandidates,
+} from '../../lib/permissions';
+import { findIndexDoc, resolveDynamicBody } from '../../lib/resources/dynamicBody';
+import { buildSidebarGraphData } from '../../lib/workspace/graphTopology';
+import { buildTree } from '../../lib/workspace/treeBuilder';
+import 'katex/dist/katex.min.css';
+
+const { tag = '' } = Astro.params;
+const rawTag = decodeURIComponent(tag);
+const cleanTag = rawTag.toLowerCase().trim();
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+let dbError = false;
+let workspaceCandidates: Awaited<ReturnType<typeof listWorkspaceResourceCandidates>> = {
+  rows: [],
+  wildcardViewerIds: [],
+};
+
+try {
+  workspaceCandidates = await listWorkspaceResourceCandidates(currentUser, { includeTimestamps: false });
+} catch (e: any) {
+  console.error(`[Tag Page ${cleanTag}] DB error:`, e.message);
+  dbError = true;
+}
+
+// The vault-wide, permission-filtered set the shell chrome reads: the explorer
+// tree and the graph. Identical triage to the viewer page.
+let viewableResources: any[] = [];
+try {
+  viewableResources = await filterViewableResources(workspaceCandidates.rows, currentUser, {
+    allowFoldersForTree: true,
+    wildcardViewerIds: workspaceCandidates.wildcardViewerIds,
+  });
+} catch (e: any) {
+  console.error(`[Tag Page ${cleanTag}] Explorer filter failed:`, e.message);
+  viewableResources = [];
+  dbError = true;
+}
+
+// Resource tags are exact, case-insensitive labels. Filtering the already
+// verified workspace set avoids a second database read and duplicate ACL work.
+const visibleResources = viewableResources.filter((resource) => {
+  if (resource.type === 'folder') return false;
+  const rawTags = resource.metadata?.tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags
+    : typeof rawTags === 'string'
+      ? rawTags.split(',').map((value: string) => value.trim())
+      : [];
+  return tags.some((value: unknown) =>
+    typeof value === 'string' && value.toLowerCase() === cleanTag
+  );
+});
+
+const folderTreeData = buildTree(viewableResources, currentUser);
+const graphData = buildSidebarGraphData(viewableResources);
+// No backlinks panel: a tag is a query, not a wikilink target, so "who links
+// here" has no honest answer for it.
+
+const breadcrumbItems = [
+  { title: 'Vault', href: '/', icon: '' },
+  { title: 'Tags', href: '/tags', icon: '' },
+  { title: `#${cleanTag}`, icon: '' },
+];
+
+const body = dbError
+  ? null
+  : await resolveDynamicBody({
+      kind: 'tag',
+      title: `#${cleanTag}`,
+      candidates: visibleResources,
+      indexDoc: findIndexDoc(visibleResources),
+      currentUser,
+    });
+
+const tagCanonicalPath = `/tags/${encodeURIComponent(cleanTag)}`;
+if (dbError) Astro.response.status = 503;
+---
+
+<BaseLayout
+  title={`Tagged: #${cleanTag} · FOSS Content Workspace`}
+  description={`Explore all knowledge notes, articles, research resources, and canvases tagged with #${cleanTag}.`}
+  currentUser={currentUser}
+  noMainWrapper={true}
+  layoutVariant="workspace"
+  canonicalUrl={tagCanonicalPath}
+>
+  {/* A tag is a query, not a resource: no active resource id, so the rail's
+      share control stays hidden and nothing is shared under a phantom type. */}
+  <ResourceShell
+    currentUser={currentUser}
+    session={Astro.locals.session}
+  >
+    <Fragment slot="explorer">
+      <FolderTree client:load treeData={folderTreeData} currentUser={currentUser} />
+    </Fragment>
+
+    <Fragment slot="content">
+      {dbError && (
+        <div class="db-error" role="alert">
+          <p>Could not load tagged resources. Please try again.</p>
+          <a href={Astro.url.pathname + Astro.url.search} class="ui-button ui-button--secondary ui-button--sm">Retry</a>
+        </div>
+      )}
+
+      {body && (
+        <>
+          <nav class="breadcrumbs-trail" aria-label="Tag path">
+            {breadcrumbItems.map((crumb, index) => {
+              const isLast = index === breadcrumbItems.length - 1;
+              return (
+                <span class="breadcrumb-item">
+                  {isLast ? (
+                    <span class="breadcrumb-current">
+                      {crumb.title}
+                    </span>
+                  ) : (
+                    <>
+                      <a href={crumb.href}>
+                        {crumb.title}
+                      </a>
+                      <span class="breadcrumb-separator">›</span>
+                    </>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+
+          <div class="ui-row ui-wrap ui-justify-between ui-align-start ui-gap-3">
+            <div class="ui-grow">
+              <h1 class="resource-head__title" data-testid="tag-index-title"><Tag size={24} aria-hidden="true" /> #{cleanTag}</h1>
+              <p class="resource-head__meta">
+                {visibleResources.length} resource{visibleResources.length !== 1 ? 's' : ''} tagged with this topic
+              </p>
+            </div>
+
+            {body.kind !== 'empty' && <div class="ui-row ui-align-center ui-gap-2 ui-shrink0">
+              <a href="/tags" class="ui-button ui-button--secondary ui-button--sm">View All Tags</a>
+            </div>}
+          </div>
+
+          {body.kind === 'empty' ? (
+            <EmptyState
+              title="No accessible resources with this tag"
+              description="Try another tag or browse the workspace."
+              >
+<a slot="action" href="/tags" class="ui-button ui-button--primary ui-button--sm">Browse tags</a>
+</EmptyState>
+          ) : <article class="prose-content" set:html={body.html} />}
+        </>
+      )}
+    </Fragment>
+
+    <Fragment slot="context">
+      <section class="sidebar-panel">
+        <GraphContainer client:idle {...graphData} currentUser={currentUser} />
+      </section>
+
+      <section class="sidebar-panel sidebar-panel--fill">
+        <TableOfContents client:idle />
+      </section>
+    </Fragment>
+  </ResourceShell>
+</BaseLayout>

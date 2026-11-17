@@ -1,0 +1,135 @@
+---
+import PropertiesPanel from './PropertiesPanel.astro';
+import { Button } from './ui/Button';
+import { formatDisplayDate } from '../lib/dateFormat';
+import { ChevronDown, Clock3, SlidersHorizontal, UserRound } from 'lucide-react';
+
+interface Props {
+  resource: any;
+  contentBody?: string;
+  currentUser?: string;
+  session?: { userId: string; email?: string; displayName?: string } | null;
+}
+
+const { resource, contentBody = '', currentUser = 'user:anonymous', session } = Astro.props;
+
+// Calculate estimated reading time
+function getWordCount(text: string): number {
+  if (!text) return 0;
+  const plain = text
+    .replace(/<[^>]*>/g, '')
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[.*?\]\(.*?\)/g, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/[#*`_~]/g, '')
+    .trim();
+  const words = plain.match(/\S+/g);
+  return words ? words.length : 0;
+}
+
+const rawWords = getWordCount(contentBody || resource.metadata?.summary || '');
+const wordCount = rawWords > 0 ? rawWords : 250;
+const readingTimeMin = Math.max(1, Math.ceil(wordCount / 200));
+
+// Extract metadata
+const metadata = resource.metadata || {};
+function getAuthorLabel(value: unknown): string {
+  if (typeof value !== 'string' || !value) return 'Anonymous';
+  if (value === 'user:system') return 'FOSS Workspace';
+  if (value === 'user:anonymous') return 'Anonymous';
+  if (!value.startsWith('user:')) return value;
+  if (value !== currentUser) return 'Workspace member';
+  return session?.displayName?.trim() || 'You';
+}
+
+const author = getAuthorLabel(metadata.author || resource.owner_id);
+const rawTags = metadata.tags;
+let tags: string[] = [];
+if (Array.isArray(rawTags)) {
+  tags = rawTags;
+} else if (typeof rawTags === 'string') {
+  tags = rawTags.split(',').map((t: string) => t.trim()).filter(Boolean);
+}
+
+const createdDate = metadata.date || resource.created_at;
+
+const formattedCreated = formatDisplayDate(createdDate);
+---
+
+<div class="content-meta-row">
+  <div class="meta-subtext-left">
+    <!-- Author -->
+    <span class="meta-subtext-author">
+      <UserRound className="meta-icon" aria-hidden="true" /> {author}
+    </span>
+
+    <span class="meta-sep">•</span>
+
+    <!-- Reading Time -->
+    <span class="meta-subtext-time" title={formattedCreated ? `Published: ${formattedCreated}` : undefined}>
+      <Clock3 className="meta-icon" aria-hidden="true" /> {readingTimeMin} min
+    </span>
+
+    <!-- Tags inline as compact pills -->
+    {tags.length > 0 && (
+      <span class="meta-tags-inline">
+        {tags.map((t) => (
+          <a
+            href={`/tags/${encodeURIComponent(t.toLowerCase())}`}
+            class="meta-tag-mini-pill"
+            title={`View all resources tagged #${t}`}
+          >
+            #{t}
+          </a>
+        ))}
+      </span>
+    )}
+  </div>
+
+  <div class="meta-subtext-right">
+    <!-- Properties dropdown trigger toggle -->
+    <Button
+      id="properties-dropdown-trigger"
+      className="properties-trigger-btn"
+      variant="secondary"
+      size="sm"
+      type="button"
+      aria-expanded="false"
+      aria-controls="note-properties-dropdown"
+      title="Show or hide note properties"
+    >
+      <SlidersHorizontal className="properties-trigger-icon" aria-hidden="true" />
+      <span class="properties-trigger-label">Properties</span>
+      <ChevronDown id="properties-trigger-arrow" className="properties-trigger-arrow" aria-hidden="true" />
+    </Button>
+  </div>
+</div>
+
+<!-- Expandable Properties Container -->
+<div id="note-properties-dropdown" class="properties-dropdown-container" hidden>
+  <PropertiesPanel
+    metadata={resource.metadata || {}}
+    createdAt={resource.created_at}
+    updatedAt={resource.updated_at}
+  />
+</div>
+
+<script>
+  function setupPropertiesDropdown() {
+    const trigger = document.getElementById('properties-dropdown-trigger');
+    const panel = document.getElementById('note-properties-dropdown');
+    if (!trigger || !panel) return;
+
+    trigger.onclick = () => {
+      const isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+      const nextState = !isExpanded;
+      trigger.setAttribute('aria-expanded', String(nextState));
+      panel.hidden = !nextState;
+
+
+    };
+  }
+
+  setupPropertiesDropdown();
+  document.addEventListener('astro:page-load', setupPropertiesDropdown);
+</script>

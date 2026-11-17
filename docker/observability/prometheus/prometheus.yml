@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: workspace-stack
+
+# Where firing alerts are delivered. Without this, evaluating an alert rule only
+# produces a series: the rules below would evaluate, `ALERTS` would be populated,
+# and nothing would ever reach a human. The Alertmanager itself decides the
+# receiver — see docker/observability/alertmanager/alertmanager.yml.tpl, which is
+# rendered at boot because a receiver with an unset target is invalid YAML.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Application metrics (prom-client, served by src/lib/observe.ts).
+  - job_name: app
+    metrics_path: /api/v1/metrics
+    # The app serves /api/v1/metrics only to a caller presenting METRICS_TOKEN
+    # as a bearer token (src/lib/metricsAuth.ts). The file is written from the
+    # container's own environment by the entrypoint in docker-compose.yml, so the
+    # secret never lands in this file or in the image. It is intentionally
+    # mounted read-write rather than part of the read-only config directory: the
+    # entrypoint writes it before Prometheus reads the config.
+    bearer_token_file: /tmp/.metrics_token
+    static_configs:
+      - targets: ["app:4321"]
+        labels:
+          service: mechanical-matter
+
+  # Self-observation for the observability stack itself.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  # ReBAC engine. OpenFGA serves its Prometheus metrics on a *separate* port from
+  # the API: `Metrics.Addr` defaults to 0.0.0.0:2112, while the HTTP API is 8080
+  # and gRPC is 8081. Scraping 8080 returns 404 and shows the target as down, which
+  # reads as "the authorization engine is broken" — the exact wrong conclusion when
+  # it is merely being scraped at the wrong address. Only the container network
+  # reaches 2112; it is deliberately not published to the host.
+  - job_name: openfga
+    static_configs:
+      - targets: ["openfga:2112"]

@@ -1,0 +1,295 @@
+---
+/**
+ * A folder is a resource, read like any other one: the workspace shell, the
+ * content column, and a body resolved by `resolveDynamicBody` (its index
+ * document if it has one, otherwise a generated prose listing).
+ *
+ * The permission policy here is deliberately split in two:
+ *  - `childResources` (what the body may mention) comes from
+ *    `filterViewableResources` WITHOUT `allowFoldersForTree`, so a private
+ *    container can never leak its name as a listing row.
+ *  - `viewableResources` (the explorer, the graph, the backlinks) uses
+ *    `allowFoldersForTree` exactly like the viewer page, because the sidebar
+ *    tree needs container nodes to hang visible notes off.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ResourceShell from '../../components/ResourceShell.astro';
+import { FolderTree } from '../../components/FolderTree';
+import { GraphContainer } from '../../components/GraphContainer';
+import { ResourceTypeIcon } from '../../components/ui/ResourceTypeIcon';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { TableOfContents } from '../../components/TableOfContents';
+import { Backlinks } from '../../components/Backlinks';
+import { ReadToggle } from '../../components/ReadToggle';
+import { query } from '../../lib/db';
+import {
+  canUserViewResource,
+  filterViewableResources,
+  listWorkspaceResourceCandidates,
+} from '../../lib/permissions';
+import { findIndexDoc, resolveDynamicBody } from '../../lib/resources/dynamicBody';
+import { buildResourcePath } from '../../lib/resourceUrls';
+import { buildBreadcrumbs } from '../../lib/workspace/breadcrumbs';
+import { buildTree } from '../../lib/workspace/treeBuilder';
+import { buildBacklinks, buildSidebarGraphData } from '../../lib/workspace/graphTopology';
+import 'katex/dist/katex.min.css';
+
+const currentUser = Astro.locals.user || 'user:anonymous';
+
+// Reconstruct folder path from dynamic segments
+// e.g. /folders/user/notes -> path = "user/notes" or a resource id like "folder:user_notes"
+const pathSegments = Astro.params.path ?? '';
+// Decode percent-encoded path segments (encodeURIComponent-encoded resource ids/paths)
+// e.g. "space%3Amain%2Ffolder%3Apublic_vault_canvas" -> "space:main/folder:public_vault_canvas"
+const folderPath = decodeURIComponent(pathSegments).replace(/^\//, '');
+
+let folderResource: any = null;
+let childResources: any[] = [];
+let dbError = false;
+let folderNotFound = false;
+let virtualFolder = false;
+
+try {
+  // Find the folder resource by path or id
+  const folderRes = await query(
+    `SELECT id, type, parent_id, title, path, owner_id, metadata, is_public, created_at, updated_at
+     FROM resources
+     WHERE (path = $1 OR id = $1) AND (type = 'folder' OR type = 'space')
+     LIMIT 1`,
+    [folderPath]
+  );
+
+  if (folderRes.rows.length === 0) {
+    // No explicit DB row for this folder path - try virtual folder fallback
+    // Query for all resources whose path starts with the folder path prefix
+    const virtualRes = await query(
+      'SELECT 1 FROM resources WHERE path LIKE $1 LIMIT 1',
+      [`${folderPath}/%`]
+    );
+
+    if (virtualRes.rowCount) {
+      // Virtual folder: no explicit DB folder row, but resources exist under this path
+      virtualFolder = true;
+      folderResource = {
+        id: `virtual:${folderPath.replace(/\//g, '_')}`,
+        type: 'folder',
+        title: folderPath.split('/').pop()?.replace(/[-_]/g, ' ') || folderPath,
+        path: folderPath,
+        owner_id: '',
+        metadata: {},
+        is_public: false,
+      };
+    } else {
+      folderNotFound = true;
+    }
+  } else {
+    folderResource = folderRes.rows[0];
+
+    // Check if current user can see this folder
+    const canViewFolder = await canUserViewResource(folderResource, currentUser);
+
+    if (!canViewFolder) {
+      if (currentUser === 'user:anonymous') {
+        return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`);
+      }
+      return new Response(null, { status: 403 });
+    }
+
+  }
+} catch (e: any) {
+  console.error('[Folder Index] DB error:', e.message);
+  dbError = true;
+}
+
+// The vault-wide, permission-filtered set the shell chrome reads: explorer tree,
+// incoming backlinks and graph, all derived from one permission-filtered set.
+let viewableResources: any[] = [];
+try {
+  const candidates = await listWorkspaceResourceCandidates(currentUser, { includeTimestamps: false });
+  viewableResources = await filterViewableResources(candidates.rows, currentUser, {
+    allowFoldersForTree: true,
+    wildcardViewerIds: candidates.wildcardViewerIds,
+  });
+
+  // The candidate query has already applied ACL prefiltering and the engine has
+  // verified every candidate. Reuse that result for the folder body instead of
+  // fetching the vault and checking the same resources a second time.
+  if (folderResource) {
+    const isDescendant = (resource: any) =>
+      resource.id !== folderResource.id &&
+      (resource.parent_id === folderResource.id ||
+        (folderResource.path && resource.path?.startsWith(`${folderResource.path}/`)));
+    childResources = viewableResources.filter(isDescendant);
+  }
+} catch (e: any) {
+  console.error('[Folder Explorer] Permission filter failed:', e.message);
+  viewableResources = [];
+  dbError = true;
+}
+
+const folderTreeData = buildTree(viewableResources, currentUser);
+const backlinks = folderResource ? buildBacklinks(folderResource, viewableResources) : [];
+
+// Breadcrumb generation from path segments
+// Titles come from the resource graph, so a crumb reads "Academic Research
+// Vault" instead of the raw "folder:research_vault_root" path segment.
+const breadcrumbs = folderResource
+  ? buildBreadcrumbs(folderResource as any, viewableResources, { isFolder: true })
+  : [{ title: 'Vault', href: '/', icon: '' } as const];
+
+function formatDate(d: string | undefined): string {
+  if (!d) return '';
+  try {
+    return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch { return ''; }
+}
+
+// Humanized folder title: use the last path segment, replace hyphens/underscores with spaces
+function humanizeFolderTitle(path: string): string {
+  const segments = path.split('/').filter(Boolean);
+  const lastSegment = segments.pop() || path;
+  return lastSegment.replace(/[-_]/g, ' ');
+}
+
+const folderTitle = folderResource?.title ?? humanizeFolderTitle(folderPath);
+const folderIcon = typeof folderResource?.metadata?.icon === 'string' ? folderResource.metadata.icon : undefined;
+const folderUpdated = formatDate(folderResource?.updated_at || folderResource?.created_at);
+// A virtual folder has no row of its own, so it has no identity to share or
+// mark as read: only a real DB folder is passed as the active resource.
+const folderActiveId = folderResource && !virtualFolder ? folderResource.id : undefined;
+const graphData = buildSidebarGraphData(viewableResources, folderActiveId);
+const folderCanonicalPath = folderResource
+  ? buildResourcePath(folderResource, folderResource.path || folderPath)
+  : `/folders/${encodeURIComponent(folderPath)}`;
+
+// Body resolution: index document if the folder has one, else a generated
+// listing over the viewable children, else an explicit empty note.
+const body = folderNotFound || dbError
+  ? null
+  : await resolveDynamicBody({
+      kind: 'folder',
+      title: folderTitle,
+      candidates: childResources,
+      indexDoc: findIndexDoc(childResources),
+      currentUser,
+    });
+if (dbError) Astro.response.status = 503;
+else if (folderNotFound) Astro.response.status = 404;
+---
+
+<BaseLayout
+  resource={folderResource ?? undefined}
+  title={`${folderTitle} · Folder · FOSS Content Workspace`}
+  description={`Contents of the ${folderTitle} vault folder — ${childResources.length} resource${childResources.length !== 1 ? 's' : ''}.`}
+  currentUser={currentUser}
+  activeResourceId={folderActiveId}
+  activeTitle={folderTitle}
+  activeType={folderResource?.type}
+  noMainWrapper={true}
+  layoutVariant="workspace"
+  canonicalUrl={folderCanonicalPath}
+>
+  <ResourceShell
+    currentUser={currentUser}
+    session={Astro.locals.session}
+    activeResourceId={folderActiveId}
+    activeTitle={folderTitle}
+    activeType={folderResource?.type}
+  >
+    <Fragment slot="explorer">
+      <FolderTree
+        client:load
+        treeData={folderTreeData}
+        activeDocId={folderActiveId}
+        activeFolderId={folderActiveId}
+        activeFolderTitle={folderActiveId ? folderTitle : undefined}
+        currentUser={currentUser}
+      />
+    </Fragment>
+
+    <Fragment slot="content">
+      {dbError && (
+        <div class="db-error" role="alert">
+          <p>Could not load folder contents. Please try again.</p>
+          <a href={Astro.url.pathname + Astro.url.search} class="ui-button ui-button--secondary ui-button--sm">Retry</a>
+        </div>
+      )}
+
+      {folderNotFound && (
+        <EmptyState title="Folder not found" description="This folder may have moved or is unavailable to you."
+          >
+<a slot="action" href="/" class="ui-button ui-button--primary ui-button--sm">Browse workspace</a>
+</EmptyState>
+      )}
+
+      {body && (
+        <>
+          <nav class="breadcrumbs-trail" aria-label="Folder path">
+            {breadcrumbs.map((crumb, index) => {
+              const isLast = index === breadcrumbs.length - 1;
+              return (
+                <span class="breadcrumb-item">
+                  {isLast ? (
+                    <span class="breadcrumb-current">
+                      {crumb.title}
+                    </span>
+                  ) : (
+                    <>
+                      <a href={crumb.href}>
+                        {crumb.title}
+                      </a>
+                      <span class="breadcrumb-separator">›</span>
+                    </>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+
+          <div class="ui-row ui-wrap ui-justify-between ui-align-start ui-gap-3">
+            <div class="ui-grow">
+              <h1 class="resource-head__title" data-testid="folder-index-title">
+                {folderIcon ? <span aria-hidden="true">{folderIcon}</span> : <ResourceTypeIcon type={folderResource?.type || 'folder'} size={24} />} {folderTitle}
+              </h1>
+              <p class="resource-head__meta">
+                {childResources.length} accessible resource{childResources.length !== 1 ? 's' : ''} in this folder
+                {folderUpdated && ` · Updated ${folderUpdated}`}
+              </p>
+            </div>
+
+            {folderActiveId && (
+              <div class="ui-row ui-align-center ui-gap-2 ui-shrink0">
+                <ReadToggle client:load resourceId={folderActiveId} currentUser={currentUser} title={folderTitle} />
+              </div>
+            )}
+          </div>
+
+          {body.kind === 'empty' ? (
+            <EmptyState
+              title="No accessible resources in this folder"
+              description="Browse the workspace to find other shared resources."
+              >
+<a slot="action" href="/" class="ui-button ui-button--primary ui-button--sm">Browse workspace</a>
+</EmptyState>
+          ) : <article class="prose-content" set:html={body.html} />}
+        </>
+      )}
+    </Fragment>
+
+    <Fragment slot="context">
+      <section class="sidebar-panel">
+        <GraphContainer client:idle {...graphData} activeNodeId={folderActiveId} currentUser={currentUser} />
+      </section>
+
+      <section class="sidebar-panel sidebar-panel--fill">
+        <TableOfContents client:idle />
+      </section>
+
+      {backlinks.length > 0 && (
+        <section class="sidebar-panel sidebar-panel--fill">
+          <Backlinks client:idle documentId={folderActiveId} backlinks={backlinks} />
+        </section>
+      )}
+    </Fragment>
+  </ResourceShell>
+</BaseLayout>

@@ -1,0 +1,153 @@
+---
+import { canonicalFromUrl } from '../lib/resourceUrls';
+
+export interface Props {
+  resource?: {
+    id?: string;
+    type?: string;
+    title?: string;
+    metadata?: Record<string, any>;
+    is_public?: boolean;
+  };
+  customTitle?: string;
+  customDescription?: string;
+  siteName?: string;
+  /** Canonical URL/path override (pretty resource URL). View state query params are stripped. */
+  canonicalUrl?: string;
+}
+
+const {
+  resource,
+  customTitle,
+  customDescription,
+  siteName = 'FOSS Workspace',
+  canonicalUrl: canonicalOverride,
+} = Astro.props;
+
+const meta = resource?.metadata || {};
+const title = customTitle || (resource?.title ? `${resource.title} · ${siteName}` : siteName);
+
+// Quartz-style description resolution priority chain
+const description =
+  customDescription ||
+  meta.socialDescription ||
+  meta.description ||
+  meta.summary ||
+  'Open-source knowledge graph, research notes, and unified content workspace.';
+
+// Canonical: explicit override wins; otherwise build from the request URL with
+// view-state flags (e.g. ?edit=true) stripped so one page maps to one URL.
+const canonicalUrl = canonicalOverride
+  ? new URL(canonicalOverride, Astro.site || Astro.url.origin).href
+  : new URL(canonicalFromUrl(Astro.url), Astro.site || Astro.url.origin).href;
+
+const tags = Array.isArray(meta.tags) ? meta.tags : [];
+
+// OG Image resolution — use dynamic social card generator if no static image specified
+let rawOgImage = meta.ogImage;
+if (!rawOgImage) {
+  const ogParams = new URLSearchParams({
+    title: resource?.title || title || 'FOSS Workspace',
+    category: meta.category || resource?.type || 'Research Vault',
+    author: meta.author || (resource as any)?.owner_id?.replace(/^user:/, '') || 'FOSS Community',
+    tags: tags.slice(0, 3).join(','),
+  });
+  rawOgImage = `/api/v1/og.png?${ogParams.toString()}`;
+}
+
+const ogImageUrl = rawOgImage.startsWith('http')
+  ? rawOgImage
+  : new URL(rawOgImage, Astro.site || Astro.url.origin).href;
+
+const isArticle = resource?.type === 'document' || resource?.type === 'blog';
+const isDraft = Boolean(meta.draft);
+const publishDate = meta.date ? new Date(meta.date).toISOString() : null;
+const modifiedDate = meta.updatedAt ? new Date(meta.updatedAt).toISOString() : null;
+---
+
+<!-- Core Meta -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonicalUrl} />
+
+<!-- Typography uses the tokenized system font stacks; don't block every page
+     on a third-party font service or force a remote request for each visitor. -->
+
+{isDraft ? (
+  <meta name="robots" content="noindex, nofollow" />
+) : (
+  <meta name="robots" content="index, follow" />
+)}
+
+<!-- OpenGraph / Facebook -->
+<meta property="og:site_name" content={siteName} />
+<meta property="og:type" content={isArticle ? 'article' : 'website'} />
+<meta property="og:url" content={canonicalUrl} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:image" content={ogImageUrl} />
+
+{isArticle && publishDate && (
+  <meta property="article:published_time" content={publishDate} />
+)}
+{isArticle && modifiedDate && (
+  <meta property="article:modified_time" content={modifiedDate} />
+)}
+{isArticle && tags.map((t: string) => (
+  <meta property="article:tag" content={t} />
+))}
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content={canonicalUrl} />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={ogImageUrl} />
+
+<!-- RSS / Atom Feed Discovery -->
+<link rel="alternate" type="application/rss+xml" title={`${siteName} RSS Feed`} href="/feed.xml" />
+
+<!-- Prefs Init (prevents a flash of the wrong theme/chrome; applies every pref).
+     data-astro-rerun is required: with <ClientRouter />, a soft navigation
+     swaps the document without re-running inline scripts, which left <html>
+     without data-chrome/data-theme and made both chrome surfaces render. -->
+<script is:inline data-astro-rerun>
+  (function() {
+    try {
+      var KEY = 'workspace_prefs';
+      var LEGACY = 'workspace_theme';
+      var DEFAULTS = { theme: '', accent: 'brand', density: 'comfortable', mode: 'glass', chrome: 'rail' };
+      var CHROME_MODES = ['header', 'rail', 'rail-pinned'];
+      var prefs = Object.assign({}, DEFAULTS);
+
+      // Read saved prefs (new object first, then legacy single-key theme)
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
+      if (saved) {
+        prefs = Object.assign({}, DEFAULTS, saved);
+      } else {
+        try {
+          var legacy = localStorage.getItem(LEGACY);
+          if (legacy === 'light' || legacy === 'dark') prefs.theme = legacy;
+        } catch (e) {}
+      }
+
+      // Resolve theme: saved > system preference
+      if (!prefs.theme) {
+        var prefDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        prefs.theme = prefDark ? 'dark' : 'light';
+      }
+
+      var el = document.documentElement;
+      el.setAttribute('data-theme', prefs.theme);
+      el.setAttribute('data-accent', prefs.accent || 'brand');
+      el.setAttribute('data-density', prefs.density || 'comfortable');
+      el.setAttribute('data-mode', prefs.mode || 'glass');
+      // Unknown chrome modes (e.g. a mode removed in a later version) fall back.
+      el.setAttribute('data-chrome',
+        CHROME_MODES.indexOf(prefs.chrome) > -1 ? prefs.chrome : 'rail');
+    } catch (e) {}
+  })();
+</script>

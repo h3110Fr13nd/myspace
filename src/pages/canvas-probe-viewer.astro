@@ -1,0 +1,26 @@
+---
+import '../styles/global.css';
+import { CanvasViewer } from '../components/canvas/CanvasViewer';
+import type { JsonCanvasSpec } from '../components/canvas/types';
+
+const data: JsonCanvasSpec = {
+  nodes: [
+    { id: 'a', type: 'text', x: 0,   y: 0,   width: 220, height: 120, text: 'Source' },
+    { id: 'b', type: 'text', x: 900, y: 500, width: 220, height: 120, text: 'Far node' },
+    { id: 'c', type: 'text', x: 480, y: 260, width: 220, height: 120, text: 'Middle' },
+  ],
+  edges: [
+    { id: 'e1', fromNode: 'a', fromSide: 'bottom', toNode: 'b', toSide: 'bottom', label: 'diagonal label', toEnd: 'arrow', color: '5' },
+    { id: 'e2', fromNode: 'a', fromSide: 'right',  toNode: 'c', toSide: 'left',  label: 'short', toEnd: 'arrow', color: '3' },
+    { id: 'e3', fromNode: 'c', fromSide: 'top',    toNode: 'a', toSide: 'left',  label: 'offset source', toEnd: 'arrow', color: '1' },
+  ],
+};
+---
+<html lang="en">
+  <head><meta charset="utf-8" /><title>viewer probe</title></head>
+  <body style="margin:0;height:100vh">
+    <div id="root" style="height:100vh">
+      <CanvasViewer client:only="react" canvasId="probe" initialData={data} currentUser="probe" />
+    </div>
+  </body>
+</html>

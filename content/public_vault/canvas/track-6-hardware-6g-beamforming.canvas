@@ -1,0 +1,98 @@
+{
+  "nodes": [
+    {
+      "id": "header-track-6-hardware-6g-beamforming",
+      "type": "text",
+      "text": "# Track 6: 6G Frontiers, IRS Beamforming & Quantum Fog\n\nPhysical layer co-design, Intelligent Reflecting Surfaces (IRS/RIS), and Quantum-inspired computing paradigms (Fog-Quant).\n\n**Total Papers**: 4 curated research studies.",
+      "x": 40,
+      "y": 40,
+      "width": 520,
+      "height": 180,
+      "color": "1"
+    },
+    {
+      "id": "group-track-6-hardware-6g-beamforming-0",
+      "type": "group",
+      "label": "IRS / RIS Beamforming & Hardware Co-design (3 papers)",
+      "x": 36,
+      "y": 296,
+      "width": 838,
+      "height": 578,
+      "color": "1"
+    },
+    {
+      "id": "paper-8",
+      "type": "resource",
+      "resourceId": "paper:paper-08-hybrid-redundancy-for-reliable-task-offloadin",
+      "resourceType": "paper",
+      "label": "P08: Hybrid Redundancy for Reliable Task Offloading i...",
+      "x": 60,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "1",
+      "parentId": "group-track-6-hardware-6g-beamforming-0"
+    },
+    {
+      "id": "paper-10",
+      "type": "resource",
+      "resourceId": "paper:paper-10-energy-efficient-task-offloading-and-efficien",
+      "resourceType": "paper",
+      "label": "P10: Energy-efficient task offloading and efficient r...",
+      "x": 470,
+      "y": 320,
+      "width": 380,
+      "height": 250,
+      "color": "1",
+      "parentId": "group-track-6-hardware-6g-beamforming-0"
+    },
+    {
+      "id": "paper-20",
+      "type": "resource",
+      "resourceId": "paper:paper-20-energy-and-cost-aware-workflow-scheduling-in-",
+      "resourceType": "paper",
+      "label": "P20: Energy and Cost-Aware Workflow Scheduling in Clo...",
+      "x": 60,
+      "y": 600,
+      "width": 380,
+      "height": 250,
+      "color": "1",
+      "parentId": "group-track-6-hardware-6g-beamforming-0"
+    },
+    {
+      "id": "paper-73",
+      "type": "resource",
+      "resourceId": "paper:paper-73-fog-quant-a-quantum-computing-inspired-framew",
+      "resourceType": "paper",
+      "label": "P73: Fog-Quant: A quantum computing inspired framewor...",
+      "x": 60,
+      "y": 1020,
+      "width": 380,
+      "height": 250,
+      "color": "6"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-paper-8-paper-10",
+      "fromNode": "paper-8",
+      "fromSide": "right",
+      "toNode": "paper-10",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "color": "1",
+      "label": "advances"
+    },
+    {
+      "id": "edge-paper-10-paper-20",
+      "fromNode": "paper-10",
+      "fromSide": "bottom",
+      "toNode": "paper-20",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "color": "1",
+      "label": "compares with"
+    }
+  ],
+  "groupingVersion": 1
+}

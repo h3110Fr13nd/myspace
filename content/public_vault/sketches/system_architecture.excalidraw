@@ -1,0 +1,140 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "id": "box-edge-sensors",
+      "type": "rectangle",
+      "x": 60,
+      "y": 60,
+      "width": 200,
+      "height": 110,
+      "strokeColor": "#00f2fe",
+      "backgroundColor": "rgba(0, 242, 254, 0.12)",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roughness": 1
+    },
+    {
+      "id": "text-edge-sensors",
+      "type": "text",
+      "x": 80,
+      "y": 95,
+      "width": 160,
+      "height": 36,
+      "text": "IoT Edge Sensors & Telemetry Stream",
+      "fontSize": 15,
+      "strokeColor": "#ffffff"
+    },
+    {
+      "id": "arrow-1",
+      "type": "arrow",
+      "x": 260,
+      "y": 115,
+      "width": 120,
+      "height": 0,
+      "strokeColor": "#00f2fe",
+      "strokeWidth": 2,
+      "points": [[0, 0], [120, 0]]
+    },
+    {
+      "id": "box-edge-broker",
+      "type": "rectangle",
+      "x": 380,
+      "y": 45,
+      "width": 240,
+      "height": 140,
+      "strokeColor": "#6366f1",
+      "backgroundColor": "rgba(99, 102, 241, 0.14)",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roughness": 1
+    },
+    {
+      "id": "text-edge-broker",
+      "type": "text",
+      "x": 400,
+      "y": 75,
+      "width": 200,
+      "height": 70,
+      "text": "Autonomous Edge Broker\n• Quantized TinyLLM (INT4)\n• DRL PPO Offloading Agent\n• Local Key-Value Cache",
+      "fontSize": 13,
+      "strokeColor": "#e2e8f0"
+    },
+    {
+      "id": "arrow-2",
+      "type": "arrow",
+      "x": 620,
+      "y": 115,
+      "width": 120,
+      "height": 0,
+      "strokeColor": "#a855f7",
+      "strokeWidth": 2,
+      "points": [[0, 0], [120, 0]]
+    },
+    {
+      "id": "box-rebac-auth",
+      "type": "ellipse",
+      "x": 740,
+      "y": 45,
+      "width": 200,
+      "height": 140,
+      "strokeColor": "#a855f7",
+      "backgroundColor": "rgba(168, 85, 247, 0.14)",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roughness": 1
+    },
+    {
+      "id": "text-rebac-auth",
+      "type": "text",
+      "x": 765,
+      "y": 90,
+      "width": 150,
+      "height": 45,
+      "text": "OpenFGA Engine\nFine-Grained ReBAC\nZero-Trust Policy",
+      "fontSize": 13,
+      "strokeColor": "#f8fafc"
+    },
+    {
+      "id": "arrow-3",
+      "type": "arrow",
+      "x": 840,
+      "y": 185,
+      "width": 0,
+      "height": 80,
+      "strokeColor": "#10b981",
+      "strokeWidth": 2,
+      "points": [[0, 0], [0, 80]]
+    },
+    {
+      "id": "box-cloud-core",
+      "type": "rectangle",
+      "x": 680,
+      "y": 265,
+      "width": 320,
+      "height": 110,
+      "strokeColor": "#10b981",
+      "backgroundColor": "rgba(16, 185, 129, 0.12)",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roughness": 1
+    },
+    {
+      "id": "text-cloud-core",
+      "type": "text",
+      "x": 705,
+      "y": 295,
+      "width": 270,
+      "height": 50,
+      "text": "Hyperscale Cloud Core Datacenter\n• Distributed PostgreSQL Storage\n• Global Multi-Tenant Knowledge Graph",
+      "fontSize": 13,
+      "strokeColor": "#ffffff"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#0b0f19",
+    "gridSize": 20
+  }
+}

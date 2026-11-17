@@ -1,0 +1,38 @@
+{
+  "title": "my canvas",
+  "nodes": [
+    {
+      "id": "node_welcome_1789674597476",
+      "type": "text",
+      "x": 100,
+      "y": 100,
+      "width": 420,
+      "height": 200,
+      "color": "5",
+      "text": "# my canvas\n\nDouble-click to edit this text node. Use the toolbar to add notes, groups, or insert existing resources."
+    },
+    {
+      "id": "node_1789675750848",
+      "type": "resource",
+      "x": 680,
+      "y": 300,
+      "width": 820,
+      "height": 640,
+      "color": "4",
+      "resourceId": "google_sheet:umhhaaa",
+      "resourceType": "google_sheet"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1789675759806_fi1t",
+      "fromNode": "node_welcome_1789674597476",
+      "fromSide": "right",
+      "toNode": "node_1789675750848",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "relates to",
+      "color": "5"
+    }
+  ]
+}

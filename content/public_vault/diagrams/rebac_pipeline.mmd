@@ -1,0 +1,23 @@
+graph TD
+  subgraph Ingestion["1. Spatial Canvas Ingestion"]
+    User["Client Session / UI"] -->|Fetch Canvas GET| Gateway["Astro SSR API Gateway"]
+    Gateway -->|Parse Nodes & Edges| Resolver["Universal Resource Resolver"]
+  end
+
+  subgraph Authorization["2. Zero-Trust ReBAC Engine"]
+    Resolver -->|Query Relations| OpenFGA["OpenFGA Policy Store"]
+    OpenFGA -->|Evaluate Tuple: viewer?| AuthCheck{"Authorized?"}
+    AuthCheck -->|Allowed: 200 OK| Sanitizer["Payload Enricher"]
+    AuthCheck -->|Denied: 403 Forbidden| Redactor["Redaction Filter"]
+  end
+
+  subgraph RenderPipeline["3. Polymorphic Dispatch"]
+    Sanitizer -->|canvas:id| C1["CanvasViewer (Sub-Canvas)"]
+    Sanitizer -->|jupyter:id| C2["JupyterViewer (Cells & Math)"]
+    Sanitizer -->|excalidraw:id| C3["ExcalidrawViewer (RoughJS)"]
+    Sanitizer -->|mermaid:id| C4["MermaidViewer (Live SVG)"]
+    Sanitizer -->|sheet:id| C5["SheetGrid (FortuneSheet)"]
+    Sanitizer -->|paper:id| C6["Research Article (KaTeX)"]
+    Redactor --> Locked["LockedNodeCard (Redacted)"]
+  end
+

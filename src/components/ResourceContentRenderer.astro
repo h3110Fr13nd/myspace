@@ -1,0 +1,176 @@
+---
+import { PdfViewer } from './PdfViewer';
+import { ImageViewer } from './ImageViewer';
+import { GoogleDriveViewer } from './GoogleDriveViewer';
+import { NovelEditor } from './editor/NovelEditor';
+import { CanvasViewer } from './canvas/CanvasViewer';
+import { DynamicForm } from './DynamicForm';
+import { SheetGrid } from './SheetGrid';
+import { ExcalidrawViewer } from './ExcalidrawViewer';
+import { JupyterViewer } from './JupyterViewer';
+import { MermaidViewer } from './MermaidViewer';
+import { resolveResourceType } from '../lib/registry/resourceRegistry';
+
+interface Props {
+  isEditMode: boolean;
+  isPdf?: boolean;
+  isImage?: boolean;
+  isGoogleDrive?: boolean;
+  isCanvas?: boolean;
+  activeDoc: {
+    id: string;
+    title: string;
+    type: string;
+    metadata?: any;
+  };
+  currentUser: string;
+  rawFileContent?: string;
+  docBodyHtml?: string;
+}
+
+const {
+  isEditMode,
+  isPdf = false,
+  isImage = false,
+  isGoogleDrive = false,
+  isCanvas = false,
+  activeDoc,
+  currentUser,
+  rawFileContent = '',
+  docBodyHtml = '',
+} = Astro.props;
+
+// Declarative viewer dispatch mapping based on resolveResourceType and flags
+type ViewerKind =
+  | 'edit'
+  | 'pdf'
+  | 'image'
+  | 'google_drive'
+  | 'canvas'
+  | 'excalidraw'
+  | 'jupyter'
+  | 'mermaid'
+  | 'form'
+  | 'sheet'
+  | 'prose';
+
+function resolveViewerKind(): ViewerKind {
+  if (isEditMode) return 'edit';
+  if (isPdf) return 'pdf';
+  if (isImage) return 'image';
+  if (isGoogleDrive) return 'google_drive';
+  if (isCanvas) return 'canvas';
+
+  const resDef = resolveResourceType(activeDoc);
+  const resType = resDef.type;
+  const rawType = activeDoc.type;
+
+  if (resType === 'pdf' || rawType === 'pdf') return 'pdf';
+  if (resType === 'image' || rawType === 'image') return 'image';
+  if (resType === 'canvas' || rawType === 'canvas') return 'canvas';
+  if (resType === 'google_doc' || resType === 'google_sheet' || rawType === 'drive' || rawType?.startsWith('drive_')) return 'google_drive';
+  if (resType === 'excalidraw' || rawType === 'excalidraw') return 'excalidraw';
+  if (resType === 'jupyter' || rawType === 'jupyter') return 'jupyter';
+  if (resType === 'mermaid' || rawType === 'mermaid') return 'mermaid';
+  if (resType === 'form' || rawType === 'form') return 'form';
+  if (resType === 'sheet' || rawType === 'sheet') return 'sheet';
+
+  return 'prose';
+}
+
+const viewerKind = resolveViewerKind();
+---
+
+{viewerKind === 'edit' && (
+  <NovelEditor
+    client:load
+    currentUser={currentUser}
+    resourceId={activeDoc.id}
+    initialTitle={activeDoc.title}
+    initialContent={rawFileContent || activeDoc.metadata?.summary || ''}
+    initialMetadata={activeDoc.metadata}
+  />
+)}
+
+{viewerKind === 'pdf' && (
+  <PdfViewer
+    client:load
+    assetId={activeDoc.id}
+    currentUser={currentUser}
+    coupledNoteId={activeDoc.metadata?.coupledNoteId || null}
+    onCreateNotes={async () => {
+      const res = await fetch('/api/v1/annotations/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfId: activeDoc.id, title: activeDoc.title }),
+      });
+      if (!res.ok) throw new Error('Failed to create annotation note');
+      const data = await res.json();
+      return data.noteId;
+    }}
+  />
+)}
+
+{viewerKind === 'image' && (
+  <ImageViewer client:load assetId={activeDoc.id} title={activeDoc.title} currentUser={currentUser} metadata={activeDoc.metadata} />
+)}
+
+{viewerKind === 'google_drive' && (
+  <GoogleDriveViewer client:load assetId={activeDoc.id} type={activeDoc.type} title={activeDoc.title} currentUser={currentUser} metadata={activeDoc.metadata} />
+)}
+
+{viewerKind === 'canvas' && (
+  <CanvasViewer
+    client:load
+    canvasId={activeDoc.id}
+    initialData={activeDoc.metadata?.canvasData}
+    canvasUrl={`/api/v1/resources/canvas/${activeDoc.id}`}
+    currentUser={currentUser}
+  />
+)}
+
+{viewerKind === 'excalidraw' && (
+  <ExcalidrawViewer
+    client:load
+    assetId={activeDoc.id}
+    title={activeDoc.title}
+    rawContent={rawFileContent || JSON.stringify(activeDoc.metadata?.elements || { elements: [] })}
+    currentUser={currentUser}
+  />
+)}
+
+{viewerKind === 'jupyter' && (
+  <JupyterViewer
+    client:load
+    notebookId={activeDoc.id}
+    title={activeDoc.title}
+    rawJson={rawFileContent || JSON.stringify(activeDoc.metadata?.cells || { cells: [] })}
+    currentUser={currentUser}
+  />
+)}
+
+{viewerKind === 'mermaid' && (
+  <MermaidViewer
+    client:load
+    diagramId={activeDoc.id}
+    title={activeDoc.title}
+    initialCode={rawFileContent || activeDoc.metadata?.chart || 'graph TD;\n  A[Start] --> B[Finish];'}
+    currentUser={currentUser}
+  />
+)}
+
+{viewerKind === 'form' && (
+  <DynamicForm client:load formId={activeDoc.id} currentUser={currentUser} />
+)}
+
+{viewerKind === 'sheet' && (
+  <SheetGrid client:load sheetId={activeDoc.id} currentUser={currentUser} />
+)}
+
+{viewerKind === 'prose' && (
+  <div
+    class="prose-content"
+    style="color: var(--text-secondary); line-height: 1.8; font-size: 1.05rem; margin-top: 2rem; max-width: 100%; overflow-x: auto;"
+    set:html={docBodyHtml}
+  />
+)}

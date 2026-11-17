@@ -1,0 +1,74 @@
+---
+// ExecutiveHighlights.astro
+// Generalized executive briefing component that adapts to any resource type.
+
+interface Props {
+  resource: any;
+}
+
+const { resource } = Astro.props;
+const meta = resource.metadata || {};
+
+const isFolder = resource.type === 'folder' || resource.type === 'space';
+const isPdf = resource.type === 'pdf';
+const isImage = resource.type === 'image';
+const isPaper = resource.type === 'paper' || meta.entityType === 'paper';
+const isBlog = resource.type === 'blog';
+
+const takeaways = Array.isArray(meta.takeaways) ? meta.takeaways : [];
+const series = meta.series;
+const summary = meta.summary || meta.description || '';
+---
+
+<div class="executive-highlights-container" style="margin-bottom: 1.75rem;">
+  {/* 1. Series Navigation Banner (if article belongs to a series) */}
+  {series && (
+    <div class="ui-card" style="padding: 0.85rem 1.25rem; margin-bottom: 1rem; border-left: 4px solid var(--accent-cyan); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.1rem;">📚</span>
+        <div>
+          <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--accent-cyan); font-weight: 700;">Series</span>
+          <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">
+            {series.name || series} {series.part ? `· Part ${series.part}` : ''}
+          </div>
+        </div>
+      </div>
+      {series.total && (
+        <span class="ui-badge ui-badge--info" style="font-size: 0.78rem;">
+          {series.part} of {series.total}
+        </span>
+      )}
+    </div>
+  )}
+
+  {/* 2. Structured Takeaways (if present) */}
+  {takeaways.length > 0 ? (
+    <div class="ui-card" style="padding: 1.25rem 1.5rem; border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.06);">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 0.75rem;">
+        <span style="font-size: 1.2rem;">💡</span>
+        <h4 style="margin: 0; color: #fff; font-size: 1rem; font-weight: 700;">
+          {isPaper ? 'Key Research Findings & Takeaways' : 'Executive Takeaways'}
+        </h4>
+      </div>
+      <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-secondary); font-size: 0.92rem; line-height: 1.6;">
+        {takeaways.map((item: string) => (
+          <li style="margin-bottom: 4px;">{item}</li>
+        ))}
+      </ul>
+    </div>
+  ) : summary ? (
+    /* 3. Standard Executive Summary Callout */
+    <div class="ui-card" style="padding: 1.1rem 1.4rem; border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.06);">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 0.4rem;">
+        <span style="font-size: 1.1rem;">📌</span>
+        <h4 style="margin: 0; color: #fff; font-size: 0.95rem; font-weight: 700;">
+          {isFolder ? 'Folder Overview' : isPdf ? 'Document Overview' : isPaper ? 'Abstract Summary' : isBlog ? 'Post Synopsis' : 'Summary'}
+        </h4>
+      </div>
+      <div style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.6;">
+        {summary}
+      </div>
+    </div>
+  ) : null}
+</div>
+

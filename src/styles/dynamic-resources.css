@@ -1,0 +1,31 @@
+/* ============================================================================ */
+/* Dynamic Resource Surfaces (/folders/*, /tags/*)                               */
+/* ---------------------------------------------------------------------------- */
+/* Folders and tags are read inside the workspace shell, so they need the same   */
+/* two things the viewer page has: a breadcrumb item wrapper and a note header.  */
+/* Everything else (breadcrumbs-trail, ui-*, prose-content, sidebar-panel) is   */
+/* already covered by the shared layers — nothing here redefines a primitive.   */
+/* ============================================================================ */
+
+/* One trail entry: link + separator, kept on a single flex line. */
+.breadcrumbs-trail .breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resource-head__title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+/* The small muted line under a title: accessible counts, last-updated, kind. */
+.resource-head__meta {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: var(--space-2) 0 0 0;
+}
