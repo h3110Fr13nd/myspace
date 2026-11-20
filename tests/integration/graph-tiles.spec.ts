@@ -109,7 +109,7 @@ test.beforeAll(async () => {
       [`document:w${i}`]
     );
   }
-  for (const [id, email] of [[BOB, 'bob@example.test'], [CAROL, 'carol@example.test']]) {
+  for (const [id, email] of [[BOB, 'bob_mock_user'], [CAROL, 'carol_mock_user']]) {
     await pool.query(`INSERT INTO users (id, email) VALUES ($1, $2)`, [id, email]);
   }
   await pool.query(`INSERT INTO groups (id, name) VALUES ('group:research', 'Research')`);
