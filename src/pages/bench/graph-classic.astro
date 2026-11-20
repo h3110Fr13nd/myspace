@@ -1,0 +1,16 @@
+---
+/** Dev-only: the classic force-directed graph on N synthetic nodes. */
+import '../../styles/global.css';
+import { ClassicBench } from '../../components/bench/GraphBench';
+
+if (import.meta.env.PROD && process.env.ENABLE_BENCH_PAGES !== '1') {
+  return new Response(null, { status: 404 });
+}
+const n = Math.max(10, Math.min(2_000_000, Number(Astro.url.searchParams.get('n') ?? 1000)));
+---
+<html lang="en" data-theme="dark">
+  <head><meta charset="utf-8" /><title>bench: classic graph {n}</title></head>
+  <body class="bench-body">
+    <ClassicBench client:only="react" n={n} />
+  </body>
+</html>

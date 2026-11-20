@@ -13,3 +13,24 @@
 .backlinks-panel__link:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .backlinks-panel__link:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) { .backlinks-panel__link { transition: none; } }
+
+/* Relationship names: a quiet chip; the full list unfolds inside the card on
+   hover / focus (no overlay, so nothing is clipped by the scrolling sidebar). */
+.backlinks-panel__title-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.backlinks-panel__link .backlinks-panel__rel-chip {
+  flex: none; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.7rem; line-height: 1.5; padding: 0 var(--space-2); border-radius: var(--radius-pill);
+  color: var(--accent-amber); border: 1px solid color-mix(in srgb, var(--accent-amber) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+}
+.backlinks-panel__link .backlinks-panel__rel-tip {
+  display: none; flex-wrap: wrap; align-items: center; gap: 4px var(--space-2);
+  font-size: 0.74rem;
+}
+.backlinks-panel__link .backlinks-panel__rel-name { color: var(--accent-amber); font-weight: 600; font-size: 0.74rem; }
+.backlinks-panel__link .backlinks-panel__rel-name + .backlinks-panel__rel-name::before { content: "· "; color: var(--text-muted, var(--text-secondary)); font-weight: 400; }
+.backlinks-panel__link .backlinks-panel__rel-target { color: var(--text-muted, var(--text-secondary)); font-size: 0.7rem; }
+.backlinks-panel__link:hover .backlinks-panel__rel-tip,
+.backlinks-panel__link:focus-visible .backlinks-panel__rel-tip { display: flex; }
+.backlinks-panel__link:hover .backlinks-panel__rel-chip,
+.backlinks-panel__link:focus-visible .backlinks-panel__rel-chip { visibility: hidden; }

@@ -29,6 +29,7 @@ import {
   type PortSide,
 } from './geometry';
 import type { Point, Rect } from './transform';
+import { centeredSlot, slotsByKey } from '../../../lib/viewer/parallel';
 
 export type { PortSide };
 
@@ -37,6 +38,9 @@ export interface RouteContext {
   toNode: CanvasNode;
   fromSide: PortSide;
   toSide: PortSide;
+  /** Position along each side, 0..1; undefined = the side's midpoint. */
+  fromT?: number;
+  toT?: number;
   /** Index of this edge among those sharing the same (from, fromSide) pair. */
   fanIndex: number;
   /** How many edges share the (from, fromSide) pair. */
@@ -71,9 +75,10 @@ export interface EdgeRouter {
 
 /** Spreads parallel edges leaving the same port so they stay individually grabbable. */
 function fanOffset(ctx: RouteContext, anchor: Anchor): number {
-  if (ctx.fanTotal <= 1) return 0;
+  // An explicitly placed attachment point is where the user put it.
+  if (ctx.fanTotal <= 1 || ctx.fromT !== undefined) return 0;
   const spread = 22;
-  const centered = ctx.fanIndex - (ctx.fanTotal - 1) / 2;
+  const centered = centeredSlot(ctx.fanIndex, ctx.fanTotal);
   // Offset perpendicular to the exit normal.
   return -anchor.ny * centered * spread + anchor.nx * centered * spread;
 }
@@ -90,8 +95,8 @@ function offsetAnchor(a: Anchor, amount: number): Anchor {
 }
 
 function bezierRouter(ctx: RouteContext): RoutedEdge {
-  const rawFrom = anchorFor(ctx.fromNode, ctx.fromSide);
-  const rawTo = anchorFor(ctx.toNode, ctx.toSide);
+  const rawFrom = anchorFor(ctx.fromNode, ctx.fromSide, ctx.fromT);
+  const rawTo = anchorFor(ctx.toNode, ctx.toSide, ctx.toT);
   const from = offsetAnchor(rawFrom, fanOffset(ctx, rawFrom));
   const to = rawTo;
   const curve = curveBetween(from, to);
@@ -116,9 +121,9 @@ function bezierRouter(ctx: RouteContext): RoutedEdge {
  * Reads better for dense, layered boards where beziers become visual noise.
  */
 function orthogonalRouter(ctx: RouteContext): RoutedEdge {
-  const fromAnchor = anchorFor(ctx.fromNode, ctx.fromSide);
+  const fromAnchor = anchorFor(ctx.fromNode, ctx.fromSide, ctx.fromT);
   const from = offsetAnchor(fromAnchor, fanOffset(ctx, fromAnchor));
-  const to = anchorFor(ctx.toNode, ctx.toSide);
+  const to = anchorFor(ctx.toNode, ctx.toSide, ctx.toT);
 
   const horizontal = from.nx !== 0;
   let pts: Point[];
@@ -250,27 +255,20 @@ export function resolveEdges({ edges, nodes, routerId }: ResolveEdgesInput): Res
     return { from, to };
   };
 
-  // Count how many edges leave each (node, side) so the router can fan them.
-  const fanCount = new Map<string, number>();
-  for (const e of edges) {
-    const ends = endsOf(e);
-    if (!ends) continue;
-    const key = `${ends.from.node.id}:${ends.from.side}`;
-    fanCount.set(key, (fanCount.get(key) ?? 0) + 1);
-  }
-  const fanSeen = new Map<string, number>();
+  // Fan slot of each edge among those leaving the same (node, side).
+  const allEnds = edges.map(endsOf);
+  const fans = slotsByKey(allEnds, (ends) => (ends ? `${ends.from.node.id}:${ends.from.side}` : null));
 
   const router = getEdgeRouter(routerId);
   const out: ResolvedEdge[] = [];
 
-  for (const e of edges) {
-    const ends = endsOf(e);
-    if (!ends) continue;
+  for (let k = 0; k < edges.length; k++) {
+    const e = edges[k];
+    const ends = allEnds[k];
+    const fan = fans[k];
+    if (!ends || !fan) continue;
     const { from, to } = ends;
-
-    const key = `${from.node.id}:${from.side}`;
-    const fanIndex = fanSeen.get(key) ?? 0;
-    fanSeen.set(key, fanIndex + 1);
+    const fanIndex = fan.index;
 
     out.push({
       id: e.id,
@@ -280,8 +278,10 @@ export function resolveEdges({ edges, nodes, routerId }: ResolveEdgesInput): Res
         toNode: to.node,
         fromSide: from.side,
         toSide: to.side,
+        fromT: from.t,
+        toT: to.t,
         fanIndex,
-        fanTotal: fanCount.get(key) ?? 1,
+        fanTotal: fan.total,
       }),
       fromSide: from.side,
       toSide: to.side,
@@ -307,6 +307,8 @@ export interface ResolvedEdgeEnd {
   /** World position of the end. */
   point: Point;
   side: PortSide;
+  /** Position along `side` (0..1) when explicitly placed; undefined = midpoint. */
+  t?: number;
   /** Node the end belongs to, or `''` while it is detached. */
   nodeId: string;
   /** True when the end is floating free of any node. */
@@ -349,8 +351,9 @@ function resolveEdgeEndIn(
   if (real) {
     const side =
       (end === 'from' ? edge.fromSide : edge.toSide) ?? (end === 'from' ? 'right' : 'left');
-    const a = anchorFor(real, side);
-    return { point: { x: a.x, y: a.y }, side, nodeId, detached: false, node: real };
+    const t = end === 'from' ? edge.fromAnchor : edge.toAnchor;
+    const a = anchorFor(real, side, t);
+    return { point: { x: a.x, y: a.y }, side, t, nodeId, detached: false, node: real };
   }
 
   // Detached: placeable only if it carries a free position.
@@ -390,3 +393,247 @@ export function distanceToEdge(resolved: ResolvedEdge, p: Point): number {
 }
 
 export { nodeRect };
+
+// ---------------------------------------------------------------------------
+// Incremental resolution
+// ---------------------------------------------------------------------------
+
+interface CachedRoute {
+  edge: import('../types').CanvasEdge;
+  from: CanvasNode;
+  to: CanvasNode;
+  fanIndex: number;
+  fanTotal: number;
+  routerId: string | undefined;
+  resolved: ResolvedEdge;
+}
+
+/**
+ * A stateful `resolveEdges` for hosts that re-resolve on every frame of a drag.
+ *
+ * Output is identical to `resolveEdges` (same order, same geometry), but a
+ * route is recomputed only when its edge object, either endpoint node object,
+ * its fan slot or the router changed. Node documents are immutable-updated, so
+ * identity is an exact change signal: a drag frame that moves three nodes
+ * re-routes only the edges touching those three.
+ *
+ * Node lookup uses an id -> position map that is verified on read
+ * (`nodes[i].id === id`) and rebuilt only when that check fails, so a frame
+ * does not pay O(N) to rebuild a Map when the array was merely mapped.
+ */
+export function createEdgeResolver(): (input: ResolveEdgesInput) => ResolvedEdge[] {
+  const cache = new Map<string, CachedRoute>();
+  let pos = new Map<string, number>();
+  let posSource: readonly CanvasNode[] | null = null;
+
+  const rebuildPos = (nodes: readonly CanvasNode[]) => {
+    pos = new Map();
+    for (let i = 0; i < nodes.length; i++) pos.set(nodes[i].id, i);
+    posSource = nodes;
+  };
+
+  // Per-edge state from the last call, aligned with `lastEdges`.
+  let lastEdges: readonly import('../types').CanvasEdge[] | null = null;
+  let lastRouter: string | undefined;
+  let slots: Array<{
+    from: CanvasNode | null;
+    to: CanvasNode | null;
+    fanIndex: number;
+    fanTotal: number;
+    resolved: ResolvedEdge | null;
+  }> = [];
+
+  return ({ edges, nodes, routerId }) => {
+    if (posSource === null || posSource.length !== nodes.length) rebuildPos(nodes);
+
+    // Fast path: same edge list and router (a drag frame). Fan slots depend only
+    // on edges and their stated sides, so they carry over; each edge costs two
+    // O(1) lookups and two identity checks, and only edges touching a moved node
+    // are re-resolved. Anything structural falls through to the full pass.
+    if (edges === lastEdges && routerId === lastRouter && slots.length === edges.length) {
+      const lookup = (id: string): CanvasNode | undefined => {
+        if (!id) return undefined;
+        const i = pos.get(id);
+        return i !== undefined && nodes[i]?.id === id ? nodes[i] : undefined;
+      };
+      const local = {
+        get: (id: string) => lookup(id),
+        has: (id: string) => lookup(id) !== undefined,
+      } as unknown as ReadonlyMap<string, CanvasNode>;
+      const router = getEdgeRouter(routerId);
+      const out: ResolvedEdge[] = [];
+      let fallback = false;
+      for (let k = 0; k < edges.length; k++) {
+        const slot = slots[k];
+        const e = edges[k];
+        const detached = !e.fromNode || !e.toNode;
+        const from = lookup(e.fromNode);
+        const to = lookup(e.toNode);
+        if (!slot.resolved) {
+          // Unresolvable last time; if that changed, fan counts change too.
+          if (resolveEdgeEndIn(local, e, 'from') && resolveEdgeEndIn(local, e, 'to')) {
+            fallback = true;
+            break;
+          }
+          continue;
+        }
+        if (!detached && from && to && from === slot.from && to === slot.to) {
+          out.push(slot.resolved);
+          continue;
+        }
+        const fe = resolveEdgeEndIn(local, e, 'from');
+        const te = resolveEdgeEndIn(local, e, 'to');
+        if (!fe || !te) {
+          // An end vanished (or the array was reordered): full pass.
+          fallback = true;
+          break;
+        }
+        const resolved: ResolvedEdge = {
+          id: e.id,
+          edge: e,
+          route: router.route({
+            fromNode: fe.node,
+            toNode: te.node,
+            fromSide: fe.side,
+            toSide: te.side,
+            fromT: fe.t,
+            toT: te.t,
+            fanIndex: slot.fanIndex,
+            fanTotal: slot.fanTotal,
+          }),
+          fromSide: fe.side,
+          toSide: te.side,
+          fromNode: fe.node,
+          toNode: te.node,
+        };
+        slot.from = detached ? null : fe.node;
+        slot.to = detached ? null : te.node;
+        slot.resolved = resolved;
+        cache.set(e.id, { edge: e, from: fe.node, to: te.node, fanIndex: slot.fanIndex, fanTotal: slot.fanTotal, routerId, resolved });
+        out.push(resolved);
+      }
+      if (!fallback) {
+        posSource = nodes;
+        return out;
+      }
+      rebuildPos(nodes);
+    }
+    let rebuilt = false;
+    const byId: ReadonlyMap<string, CanvasNode> = {
+      get(id: string) {
+        let i = pos.get(id);
+        if (i === undefined || nodes[i]?.id !== id) {
+          if (rebuilt) return undefined;
+          rebuildPos(nodes);
+          rebuilt = true;
+          i = pos.get(id);
+          if (i === undefined) return undefined;
+        }
+        return nodes[i];
+      },
+      has(id: string) {
+        return this.get(id) !== undefined;
+      },
+    } as ReadonlyMap<string, CanvasNode>;
+    posSource = nodes;
+
+    const ends = new Array<{ from: ResolvedEdgeEnd; to: ResolvedEdgeEnd } | null>(edges.length);
+    const fanCount = new Map<string, number>();
+    for (let k = 0; k < edges.length; k++) {
+      const e = edges[k];
+      const from = resolveEdgeEndIn(byId, e, 'from');
+      const to = resolveEdgeEndIn(byId, e, 'to');
+      if (!from || !to) {
+        ends[k] = null;
+        continue;
+      }
+      ends[k] = { from, to };
+      const key = `${from.node.id}:${from.side}`;
+      fanCount.set(key, (fanCount.get(key) ?? 0) + 1);
+    }
+
+    const fanSeen = new Map<string, number>();
+    const router = getEdgeRouter(routerId);
+    const out: ResolvedEdge[] = [];
+    const live = new Set<string>();
+    for (let k = 0; k < edges.length; k++) {
+      const pair = ends[k];
+      if (!pair) continue;
+      const e = edges[k];
+      const { from, to } = pair;
+      const key = `${from.node.id}:${from.side}`;
+      const fanIndex = fanSeen.get(key) ?? 0;
+      fanSeen.set(key, fanIndex + 1);
+      const fanTotal = fanCount.get(key) ?? 1;
+
+      const hit = cache.get(e.id);
+      // Detached ends resolve to fresh stub nodes every call, so only real-node
+      // ends can be compared by identity; a detached edge always re-routes.
+      if (
+        hit &&
+        hit.edge === e &&
+        !from.detached &&
+        !to.detached &&
+        hit.from === from.node &&
+        hit.to === to.node &&
+        hit.fanIndex === fanIndex &&
+        hit.fanTotal === fanTotal &&
+        hit.routerId === routerId
+      ) {
+        out.push(hit.resolved);
+        live.add(e.id);
+        continue;
+      }
+      const resolved: ResolvedEdge = {
+        id: e.id,
+        edge: e,
+        route: router.route({
+          fromNode: from.node,
+          toNode: to.node,
+          fromSide: from.side,
+          toSide: to.side,
+          fromT: from.t,
+          toT: to.t,
+          fanIndex,
+          fanTotal,
+        }),
+        fromSide: from.side,
+        toSide: to.side,
+        fromNode: from.node,
+        toNode: to.node,
+      };
+      cache.set(e.id, { edge: e, from: from.node, to: to.node, fanIndex, fanTotal, routerId, resolved });
+      live.add(e.id);
+      out.push(resolved);
+    }
+    if (cache.size > live.size) {
+      for (const id of cache.keys()) if (!live.has(id)) cache.delete(id);
+    }
+
+    // Per-edge slots for the fast path, aligned with `edges`.
+    lastEdges = edges;
+    lastRouter = routerId;
+    const byEdge = new Map(out.map((r) => [r.id, r]));
+    const fanSeen2 = new Map<string, number>();
+    slots = new Array(edges.length);
+    for (let k = 0; k < edges.length; k++) {
+      const pair = ends[k];
+      const r = pair ? byEdge.get(edges[k].id) ?? null : null;
+      if (!pair || !r) {
+        slots[k] = { from: null, to: null, fanIndex: 0, fanTotal: 1, resolved: null };
+        continue;
+      }
+      const key = `${pair.from.node.id}:${pair.from.side}`;
+      const fanIndex = fanSeen2.get(key) ?? 0;
+      fanSeen2.set(key, fanIndex + 1);
+      slots[k] = {
+        from: pair.from.detached ? null : pair.from.node,
+        to: pair.to.detached ? null : pair.to.node,
+        fanIndex,
+        fanTotal: fanCount.get(key) ?? 1,
+        resolved: r,
+      };
+    }
+    return out;
+  };
+}

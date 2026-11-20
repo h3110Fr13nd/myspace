@@ -210,3 +210,62 @@
 
 .math-inline { color: var(--accent-cyan); }
 
+
+/* ============================================================================ */
+/* Reading typography                                                           */
+/* The reset zeroed every margin and list indent inside notes, so paragraphs,  */
+/* headings and lists ran together and list markers sat outside the card.      */
+/* Low specificity (:where) so component blocks keep their own spacing.        */
+/* ============================================================================ */
+.prose-content {
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: var(--text-secondary);
+  max-width: 72ch;
+}
+:where(.prose-content) :where(p, ul, ol, blockquote, table, figure, details) {
+  margin: 0 0 1.05em;
+}
+:where(.prose-content) :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 1.6em 0 0.5em;
+}
+:where(.prose-content) > :where(h1, h2, h3, h4):first-child { margin-top: 0.2em; }
+:where(.prose-content) h2 { font-size: 1.5em; }
+:where(.prose-content) h3 { font-size: 1.22em; }
+:where(.prose-content) h4 { font-size: 1.05em; }
+:where(.prose-content) :where(ul, ol) { padding-left: 1.5em; }
+:where(.prose-content) :where(ul ul, ul ol, ol ul, ol ol) { margin: 0.3em 0 0.3em; }
+:where(.prose-content) li { margin: 0.28em 0; padding-left: 0.2em; }
+:where(.prose-content) li::marker { color: var(--accent-cyan); font-weight: 600; }
+:where(.prose-content) :where(a:not([class])) {
+  color: var(--accent-cyan);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  text-underline-offset: 3px;
+}
+:where(.prose-content) :where(a:not([class])):hover { text-decoration-color: currentColor; }
+:where(.prose-content) blockquote {
+  border-left: 3px solid var(--accent-cyan);
+  padding: 0.2em 0 0.2em 1em;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+:where(.prose-content) hr {
+  border: 0;
+  border-top: 1px solid var(--border-glass);
+  margin: 2em 0;
+}
+:where(.prose-content) :where(:not(pre) > code) {
+  font-family: var(--font-code, var(--font-mono));
+  font-size: 0.88em;
+  padding: 0.12em 0.38em;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+}
+:where(.prose-content) :where(strong) { color: var(--text-primary); }
+:where(.prose-content) img { border-radius: var(--radius-md); }

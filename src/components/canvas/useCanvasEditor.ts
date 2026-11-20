@@ -319,9 +319,11 @@ export function useCanvasEditor({
       const draft = typeof next === 'function' ? next(nodesRef.current) : next;
       const released = enforceMembershipPolicy(draft);
       const finalNodes = enforceInvariants(released.nodes);
-      const removed = new Set(
-        draft.filter((d) => !finalNodes.some((f) => f.id === d.id)).map((d) => d.id)
-      );
+      // O(n): a Set of surviving ids. The previous `filter(... finalNodes.some(...))`
+      // was O(n²) — 10^8 comparisons per commit on a 10k-node board, and every
+      // move, resize and recolour is a commit.
+      const survivors = new Set(finalNodes.map((f) => f.id));
+      const removed = new Set(draft.filter((d) => !survivors.has(d.id)).map((d) => d.id));
       const finalEdges =
         nextEdges ?? (removed.size > 0 ? edgesForNodes(edgesRef.current, removed) : edgesRef.current);
       nodesRef.current = finalNodes;
@@ -1084,8 +1086,8 @@ export function useCanvasEditor({
           // Clearing the stored free position is essential: a later detach would
           // otherwise resurrect a stale coordinate.
           return result.end === 'from'
-            ? { ...ed, fromNode: result.nodeId, fromSide: result.side, fromX: undefined, fromY: undefined }
-            : { ...ed, toNode: result.nodeId, toSide: result.side, toX: undefined, toY: undefined };
+            ? { ...ed, fromNode: result.nodeId, fromSide: result.side, fromAnchor: result.t, fromX: undefined, fromY: undefined }
+            : { ...ed, toNode: result.nodeId, toSide: result.side, toAnchor: result.t, toX: undefined, toY: undefined };
         }
         if (result.type === 'detach') {
           // Keep where it was let go, or the edge has no drawable anchor and its

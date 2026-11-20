@@ -1,0 +1,19 @@
+---
+/**
+ * Dev-only benchmark surface for the streamed graph. Returns 404 in production
+ * unless ENABLE_BENCH_PAGES=1 (set only on benchmark deployments).
+ */
+import '../../styles/global.css';
+import { TiledBench } from '../../components/bench/GraphBench';
+
+if (import.meta.env.PROD && process.env.ENABLE_BENCH_PAGES !== '1') {
+  return new Response(null, { status: 404 });
+}
+const modal = Astro.url.searchParams.get('modal') === '1';
+---
+<html lang="en" data-theme="dark">
+  <head><meta charset="utf-8" /><title>bench: tiled graph</title></head>
+  <body class="bench-body">
+    <TiledBench client:only="react" modal={modal} />
+  </body>
+</html>

@@ -2,6 +2,56 @@ import { buildResourcePath } from '../resourceUrls';
 import type { GraphNode, GraphLink } from '../../components/graph/constants';
 import type { Backlink } from '../../components/Backlinks';
 import type { WorkspaceResource } from './treeBuilder';
+import { metadataRelationships, type Relationship } from '../relationships';
+
+/** Declared (metadata) and inline (`[[t|alias|type]]`) relationships of a resource. */
+function relationshipsOf(resource: WorkspaceResource): Relationship[] {
+  const inline = Array.isArray(resource.metadata?.linkRelationships) ? resource.metadata.linkRelationships : [];
+  return metadataRelationships({ relationships: [...metadataRelationships(resource.metadata), ...inline] });
+}
+
+/**
+ * Relationships a canvas draws between two other resources (labelled edges
+ * between resource cards). Both ends must be visible to the viewer — they are
+ * resolved only against the viewer's own resource list.
+ */
+function pushCanvasEdgeLinks(
+  canvas: WorkspaceResource,
+  resolve: (ref: string) => WorkspaceResource | undefined,
+  links: GraphLink[],
+  keep: (id: string) => boolean = () => true
+): void {
+  const rels = canvas.metadata?.edgeRelationships;
+  if (!Array.isArray(rels)) return;
+  for (const rel of rels) {
+    if (!rel || typeof rel.source !== 'string' || typeof rel.target !== 'string' || typeof rel.type !== 'string') continue;
+    const a = resolve(rel.source);
+    const b = resolve(rel.target);
+    if (!a || !b || a.id === b.id || !keep(a.id) || !keep(b.id)) continue;
+    links.push({ source: a.id, target: b.id, label: rel.type });
+  }
+}
+
+/**
+ * Named links from `resource`: one per relationship, so two notes can be joined
+ * by several. Returns the target ids that got a named link, so the caller can
+ * skip the plain wikilink edge to them.
+ */
+function pushRelationshipLinks(
+  resource: WorkspaceResource,
+  resolve: (ref: string) => WorkspaceResource | undefined,
+  links: GraphLink[],
+  keep: (targetId: string) => boolean = () => true
+): Set<string> {
+  const named = new Set<string>();
+  for (const rel of relationshipsOf(resource)) {
+    const target = resolve(rel.target);
+    if (!target || target.id === resource.id || !keep(target.id)) continue;
+    links.push({ source: resource.id, target: target.id, label: rel.type });
+    named.add(target.id);
+  }
+  return named;
+}
 
 export interface GraphData {
   nodes: GraphNode[];
@@ -64,6 +114,24 @@ export function buildSidebarGraphData(
   for (const resource of rawResources) {
     if (resource.parent_id === activeNodeId) neighbourIds.add(resource.id);
 
+    // Neighbours through relationships a canvas draws between two resources.
+    if (Array.isArray(resource.metadata?.edgeRelationships)) {
+      for (const rel of resource.metadata.edgeRelationships) {
+        const a = typeof rel?.source === 'string' ? resolveWikilink(rel.source) : undefined;
+        const b = typeof rel?.target === 'string' ? resolveWikilink(rel.target) : undefined;
+        if (a && b && a.id === activeNodeId) neighbourIds.add(b.id);
+        else if (a && b && b.id === activeNodeId) neighbourIds.add(a.id);
+      }
+    }
+
+    // Relationship-only neighbours (declared in metadata, not linked inline).
+    for (const rel of relationshipsOf(resource)) {
+      const target = resolveWikilink(rel.target);
+      if (!target) continue;
+      if (resource.id === activeNodeId) neighbourIds.add(target.id);
+      else if (target.id === activeNodeId) neighbourIds.add(resource.id);
+    }
+
     const wikilinks = resource.metadata?.wikilinks;
     if (!Array.isArray(wikilinks)) continue;
     if (resource.id === activeNodeId) {
@@ -91,12 +159,14 @@ export function buildSidebarGraphData(
     if (resource.parent_id && localResources.has(resource.parent_id)) {
       links.push({ source: resource.parent_id, target: resource.id });
     }
+    const named = pushRelationshipLinks(resource, resolveWikilink, links, (id) => localResources.has(id));
+    pushCanvasEdgeLinks(resource, resolveWikilink, links, (id) => localResources.has(id));
     const wikilinks = resource.metadata?.wikilinks;
     if (!Array.isArray(wikilinks)) continue;
     for (const targetSlug of wikilinks) {
       if (typeof targetSlug !== 'string') continue;
       const target = resolveWikilink(targetSlug);
-      if (target && localResources.has(target.id)) {
+      if (target && localResources.has(target.id) && !named.has(target.id)) {
         links.push({ source: resource.id, target: target.id });
       }
     }
@@ -133,7 +203,17 @@ export function buildGraphData(rawResources: WorkspaceResource[]): GraphData {
       });
     }
 
-    // 2. Semantic Wikilinks: Connect to referenced entities
+    // 2. Named relationships (possibly several per pair).
+    const resolveRef = (ref: string) =>
+      resolvedWikilinks.has(ref)
+        ? resolvedWikilinks.get(ref)
+        : resolvedWikilinks
+            .set(ref, resourceBySlug.get(ref) ?? resourceById.get(ref) ?? rawResources.find((x) => x.id.includes(ref)))
+            .get(ref);
+    const named = pushRelationshipLinks(r, resolveRef, links);
+    pushCanvasEdgeLinks(r, resolveRef, links);
+
+    // 3. Semantic Wikilinks: Connect to referenced entities
     if (r.metadata?.wikilinks && Array.isArray(r.metadata.wikilinks)) {
       r.metadata.wikilinks.forEach((targetSlug: string) => {
         let targetDoc = resolvedWikilinks.get(targetSlug);
@@ -148,7 +228,7 @@ export function buildGraphData(rawResources: WorkspaceResource[]): GraphData {
             ?? rawResources.find((resource) => resource.id.includes(targetSlug));
           resolvedWikilinks.set(targetSlug, targetDoc);
         }
-        if (targetDoc) {
+        if (targetDoc && !named.has(targetDoc.id)) {
           links.push({
             source: r.id,
             target: targetDoc.id,
@@ -165,18 +245,24 @@ export function buildGraphData(rawResources: WorkspaceResource[]): GraphData {
  * Computes incoming backlinks referencing the active document.
  */
 export function buildBacklinks(activeDoc: WorkspaceResource, rawResources: WorkspaceResource[]): Backlink[] {
-  return rawResources
-    .filter((r) => {
-      return r.metadata?.wikilinks?.some(
-        (slug: string) => activeDoc.id.includes(slug) || activeDoc.metadata?.slug === slug || slug === activeDoc.id
-      );
-    })
-    .map((r) => ({
+  const pointsHere = (slug: unknown) =>
+    typeof slug === 'string' && !!slug && (activeDoc.id.includes(slug) || activeDoc.metadata?.slug === slug || slug === activeDoc.id);
+  const out: Backlink[] = [];
+  for (const r of rawResources) {
+    if (r.id === activeDoc.id) continue;
+    const linked = Array.isArray(r.metadata?.wikilinks) && r.metadata.wikilinks.some(pointsHere);
+    // Named relationships pointing at this note (inline or declared).
+    const relations = [...new Set(relationshipsOf(r).filter((rel) => pointsHere(rel.target)).map((rel) => rel.type))];
+    if (!linked && relations.length === 0) continue;
+    out.push({
       id: r.id,
       title: r.title,
       path: buildResourcePath(r, r.path || undefined),
       // Only real prose: a synthesized "Linked reference from ..." line is noise.
       excerpt: r.metadata?.summary || r.metadata?.description || '',
       slug: r.metadata?.slug,
-    }));
+      ...(relations.length ? { relations } : {}),
+    });
+  }
+  return out;
 }

@@ -13,8 +13,10 @@
  * cased per call site:
  *
  *   - Release over a **port dot** (within `PORT_SNAP_RADIUS`) → that exact side.
- *   - Release over **anywhere on a node** → best side chosen automatically, so
- *     users never have to aim at a 12px dot.
+ *   - Release over **anywhere on a node** → the edge binds to the nearest point
+ *     of the node's border (Excalidraw-style), snapping to the side's midpoint
+ *     when close to it — so users never have to aim at a 12px dot, and several
+ *     edges can land at distinct, chosen points of the same side.
  *   - Release over **empty space** → the end is detached; the edge becomes a
  *     dangling stub that can be picked up again later (or is deleted by the
  *     host's policy).
@@ -33,6 +35,7 @@ import { DROP_TOLERANCE, PORT_SNAP_RADIUS } from './constants';
 import {
   anchorFor,
   bestPortForPoint,
+  borderAnchorForPoint,
   curveBetween,
   nearestPort,
   type Anchor,
@@ -49,6 +52,8 @@ export type ConnectionOrigin =
 export interface ConnectionTarget {
   nodeId: string;
   side: PortSide;
+  /** Position along the side (0..1); undefined = the side's midpoint. */
+  t?: number;
   /** World position of the resolved anchor. */
   point: Point;
 }
@@ -86,7 +91,7 @@ export interface ConnectionApi {
 
 export type ConnectionResult =
   | { type: 'create'; edge: CanvasEdge }
-  | { type: 'reattach'; edgeId: string; end: 'from' | 'to'; nodeId: string; side: PortSide }
+  | { type: 'reattach'; edgeId: string; end: 'from' | 'to'; nodeId: string; side: PortSide; t?: number }
   /**
    * Released over empty board. `point` is where it was let go, in world space:
    * the edge has to record it, otherwise the detached end has no position, the
@@ -192,13 +197,13 @@ export function useConnection(options: UseConnectionOptions): ConnectionApi {
       let fallbackArea = Infinity;
       for (const node of nodesNear(world, DROP_TOLERANCE)) {
         if (node.type === 'group') continue;
-        const side = bestPortForPoint(node, world, DROP_TOLERANCE);
-        if (!side) continue;
-        const a = anchorFor(node, side);
+        if (!bestPortForPoint(node, world, DROP_TOLERANCE)) continue;
+        const { side, t } = borderAnchorForPoint(node, world);
+        const a = anchorFor(node, side, t);
         // Overlapping nodes: the smallest is the visually topmost, so it wins.
         const area = node.width * node.height;
         if (!fallback || area < fallbackArea) {
-          fallback = { nodeId: node.id, side, point: { x: a.x, y: a.y } };
+          fallback = { nodeId: node.id, side, t, point: { x: a.x, y: a.y } };
           fallbackArea = area;
         }
       }
@@ -233,12 +238,13 @@ export function useConnection(options: UseConnectionOptions): ConnectionApi {
       const node = nodeId ? findNode(nodeId) : undefined;
       if (node) {
         const side = (end === 'from' ? edge.fromSide : edge.toSide) ?? 'right';
-        const a = anchorFor(node, side);
+        const t = end === 'from' ? edge.fromAnchor : edge.toAnchor;
+        const a = anchorFor(node, side, t);
         setDrag({
           origin: { kind: 'reattach', edgeId, end, original: edge },
           pointer: { x: a.x, y: a.y },
           source: a,
-          target: { nodeId: node.id, side, point: { x: a.x, y: a.y } },
+          target: { nodeId: node.id, side, t, point: { x: a.x, y: a.y } },
           active: false,
         });
         return;
@@ -296,6 +302,7 @@ export function useConnection(options: UseConnectionOptions): ConnectionApi {
         fromSide: origin.fromSide,
         toNode: target.nodeId,
         toSide: target.side,
+        ...(target.t !== undefined ? { toAnchor: target.t } : {}),
         ...(label ? { label } : {}),
         toEnd: 'arrow',
         color: '5',
@@ -325,7 +332,8 @@ export function useConnection(options: UseConnectionOptions): ConnectionApi {
      */
     const sameNode = end === 'from' ? origin.original.fromNode : origin.original.toNode;
     const sameSide = end === 'from' ? origin.original.fromSide : origin.original.toSide;
-    if (target.nodeId === sameNode && target.side === sameSide) return null;
+    const sameT = end === 'from' ? origin.original.fromAnchor : origin.original.toAnchor;
+    if (target.nodeId === sameNode && target.side === sameSide && target.t === sameT) return null;
 
     const result: ConnectionResult = {
       type: 'reattach',
@@ -333,6 +341,7 @@ export function useConnection(options: UseConnectionOptions): ConnectionApi {
       end: origin.end,
       nodeId: target.nodeId,
       side: target.side,
+      t: target.t,
     };
     onChangeRef.current?.(result);
     return result;

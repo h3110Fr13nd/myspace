@@ -1,0 +1,18 @@
+---
+/** Dev-only: the canvas editor/viewer on a synthetic N-node board. */
+import '../../styles/global.css';
+import 'katex/dist/katex.min.css';
+import { CanvasBench } from '../../components/bench/CanvasBench';
+
+if (import.meta.env.PROD && process.env.ENABLE_BENCH_PAGES !== '1') {
+  return new Response(null, { status: 404 });
+}
+const n = Math.max(1, Math.min(1_000_000, Number(Astro.url.searchParams.get('n') ?? 1000)));
+const mode = Astro.url.searchParams.get('mode') === 'viewer' ? 'viewer' : 'editor';
+---
+<html lang="en" data-theme="dark">
+  <head><meta charset="utf-8" /><title>bench: canvas {mode} {n}</title></head>
+  <body class="bench-body">
+    <CanvasBench client:only="react" n={n} mode={mode} />
+  </body>
+</html>

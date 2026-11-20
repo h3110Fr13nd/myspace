@@ -1,0 +1,6 @@
+{"n":5000,"target":"before","firstPaintMs":4553}
+{"n":5000,"target":"after","firstPaintMs":2650}
+{"n":20000,"target":"before","firstPaintMs":32719}
+{"n":20000,"target":"after","firstPaintMs":16558}
+{"n":50000,"target":"before","firstPaintMs":108198}
+{"n":50000,"target":"after","firstPaintMs":44100}

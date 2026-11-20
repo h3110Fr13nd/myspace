@@ -21,11 +21,13 @@
  * curve — rather than to the chord midpoint.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { resolveEdges, type ResolvedEdge } from './routing';
+import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { createEdgeResolver, type ResolvedEdge, type RoutedEdge } from './routing';
 import type { ViewportTransform } from './transform';
 import { resolveColor } from '../types';
 import type { CanvasEdge, CanvasNode } from '../types';
+import { frameCanvasOptions } from '../../../lib/viewer/gpuTier';
+import { MotionRaster } from './motionRaster';
 
 export interface DraftEdgeSpec {
   /** SVG path data in world space. */
@@ -82,10 +84,14 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
   const transformRef = useRef(transform);
   transformRef.current = transform;
 
-  // Geometry is derived from (edges, nodes, router, selection) only — not from
-  // the transform — so panning and zooming reuse the same computed paths.
+  // Geometry is derived from (edges, nodes, router) only — not from the
+  // transform — so panning and zooming reuse the same computed paths. The
+  // resolver is incremental: a drag frame re-routes only edges whose endpoint
+  // nodes changed, instead of every edge on the board.
+  const resolverRef = useRef<ReturnType<typeof createEdgeResolver> | null>(null);
+  if (!resolverRef.current) resolverRef.current = createEdgeResolver();
   const resolved = useMemo(
-    () => resolveEdges({ edges, nodes, routerId }),
+    () => resolverRef.current!({ edges, nodes, routerId }),
     [edges, nodes, routerId]
   );
 
@@ -125,24 +131,20 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
       canvas.height = bh;
     }
     frameRef.current = { dpr, k: transform.k };
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', frameCanvasOptions());
     if (ctx) ctxRef.current = ctx;
   }, [size.width, size.height, transform.k]);
 
   // --- Paint loop -----------------------------------------------------------
 
-  const paint = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!canvas || !ctx) return;
-
+  /** Paint every edge in view into `ctx` for camera `t` (canvas `w x h` CSS px). */
+  const drawAll = useCallback((ctx: CanvasRenderingContext2D, t: ViewportTransform, w: number, h: number) => {
     const dpr = frameRef.current.dpr;
-    const t = transformRef.current;
     const k = t.k;
     const inv = 1 / k;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     // Work in screen pixels; translate so world (0,0) lands under (t.x, t.y).
     ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * t.x, dpr * t.y);
     ctx.lineCap = 'round';
@@ -151,7 +153,8 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    const view = visibleRef.current;
+    // The area this paint covers (the snapshot is larger than the viewport).
+    const view = { x: -t.x / k, y: -t.y / k, width: w / k, height: h / k };
     const sel = selectedRef.current;
 
     for (const item of resolvedRef.current) {
@@ -175,14 +178,62 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
     }
   }, []);
 
+  // While the camera moves, a dense edge layer is shown as a scaled snapshot
+  // and repainted in full once it settles (see core/motionRaster).
+  const rasterRef = useRef<MotionRaster | null>(null);
+  const paint = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+    rasterRef.current ??= new MotionRaster({ contextOptions: frameCanvasOptions() });
+    const s = sizeRef.current;
+    rasterRef.current.frame(
+      ctx,
+      transformRef.current,
+      Math.max(1, Math.round(s.width)),
+      Math.max(1, Math.round(s.height)),
+      frameRef.current.dpr,
+      resolvedRef.current.length,
+      drawAll,
+      () => requestAnimationFrame(paint)
+    );
+  }, [drawAll]);
+
+  useEffect(() => () => rasterRef.current?.dispose(), []);
+
   // Repaint whenever anything pixel-visible changes, coalesced to one frame.
   // Reads live values through refs, so the closure never needs re-binding.
+  // Anything other than the camera changing invalidates the motion snapshot.
+  const contentRef = useRef<unknown[]>([]);
   useEffect(() => {
+    const content = [size.width, size.height, resolved, selectedEdgeIds, activeEdgeId, draftEdge];
+    const prev = contentRef.current;
+    if (draftEdge || content.some((v, i) => v !== prev[i])) rasterRef.current?.invalidate();
+    contentRef.current = content;
     const raf = requestAnimationFrame(paint);
     return () => cancelAnimationFrame(raf);
   }, [paint, transform, size, resolved, selectedEdgeIds, activeEdgeId, draftEdge, onEdgeClick, onEdgeContextMenu]);
 
   const interactive = Boolean(onEdgeClick || onEdgeContextMenu);
+
+  // Hit paths for edges near the view. The padded rect is kept until the view
+  // leaves it (or the zoom changes a lot), so a pan does not re-render the list.
+  const hitRectRef = useRef<{ rect: Rect; span: number } | null>(null);
+  const span = Math.max(visibleRect.width, visibleRect.height);
+  let hr = hitRectRef.current;
+  if (!hr || span > hr.span * 1.5 || span < hr.span / 1.5 || !containsRect(hr.rect, visibleRect)) {
+    const pad = span * 0.5;
+    hr = {
+      rect: { x: visibleRect.x - pad, y: visibleRect.y - pad, width: visibleRect.width + pad * 2, height: visibleRect.height + pad * 2 },
+      span,
+    };
+    hitRectRef.current = hr;
+  }
+  const hitRect = hr.rect;
+  const hitItems = useMemo(
+    () => (interactive ? resolved.filter((item) => intersects(item.route.bbox, hitRect)) : []),
+    [interactive, resolved, hitRect]
+  );
 
   return (
     <div
@@ -210,9 +261,10 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
       />
 
       {/*
-        Transparent SVG hit layer. Stroke width is divided by zoom so the grab
-        area is a constant number of *screen* pixels at any zoom level — the
-        old fixed 18 world units collapsed to 4.5px at 25% zoom.
+        Transparent SVG hit layer, for edges near the view only. Paths use a
+        non-scaling stroke, so the grab width is a constant number of screen
+        pixels at any zoom without re-rendering a path when the zoom changes;
+        panning only rewrites the group transform.
       */}
       {interactive && (
         <svg
@@ -221,25 +273,7 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
           shapeRendering="geometricPrecision"
         >
           <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
-            {resolved.map((item) => (
-              <path
-                key={item.id}
-                d={item.route.path}
-                stroke="transparent"
-                strokeWidth={HIT_WIDTH / Math.max(transform.k, 0.01)}
-                fill="none"
-                style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdgeClick?.(item.id);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onEdgeContextMenu?.(item.id, e);
-                }}
-              />
-            ))}
+            <HitPaths items={hitItems} onEdgeClick={onEdgeClick} onEdgeContextMenu={onEdgeContextMenu} />
           </g>
         </svg>
       )}
@@ -249,6 +283,66 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({
 
 /** Screen-constant grab width for the invisible hit stroke. */
 const HIT_WIDTH = 18;
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+function containsRect(outer: Rect, inner: Rect): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
+}
+
+interface HitPathsProps {
+  items: readonly ResolvedEdge[];
+  onEdgeClick?: (edgeId: string) => void;
+  onEdgeContextMenu?: (edgeId: string, e: React.MouseEvent) => void;
+}
+
+/** Memoised so a pan (new transform, same items) skips every path. */
+const HitPaths = memo(function HitPaths({ items, onEdgeClick, onEdgeContextMenu }: HitPathsProps) {
+  return (
+    <>
+      {items.map((item) => (
+        <path
+          key={item.id}
+          d={item.route.path}
+          stroke="transparent"
+          strokeWidth={HIT_WIDTH}
+          vectorEffect="non-scaling-stroke"
+          fill="none"
+          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdgeClick?.(item.id);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdgeContextMenu?.(item.id, e);
+          }}
+        />
+      ))}
+    </>
+  );
+});
+
+/**
+ * Parsed paths, per route object. Routes are cached by the incremental
+ * resolver, so an unchanged edge keeps its Path2D across frames instead of
+ * re-parsing its SVG string on every paint.
+ */
+const pathCache = new WeakMap<RoutedEdge, Path2D>();
+function pathFor(route: RoutedEdge): Path2D {
+  let p = pathCache.get(route);
+  if (!p) {
+    p = new Path2D(route.path);
+    pathCache.set(route, p);
+  }
+  return p;
+}
 
 function intersects(a: { x: number; y: number; width: number; height: number }, b: typeof a): boolean {
   return !(
@@ -269,7 +363,7 @@ interface DrawOptions {
 
 function drawEdge(ctx: CanvasRenderingContext2D, item: ResolvedEdge, o: DrawOptions) {
   const { route, edge } = item;
-  const path = new Path2D(route.path);
+  const path = pathFor(route);
   const emphasised = o.isSelected || o.isActive;
 
   ctx.save();
@@ -301,7 +395,9 @@ function drawEdge(ctx: CanvasRenderingContext2D, item: ResolvedEdge, o: DrawOpti
     ctx.restore();
   }
 
-  if (edge.label) {
+  // Label pills are a constant screen size, so far out they only clutter (and
+  // each costs a measureText). Show them from 35% zoom, or when emphasised.
+  if (edge.label && (o.inv <= 1 / 0.35 || emphasised)) {
     const text = edge.label.length > 26 ? `${edge.label.slice(0, 24)}…` : edge.label;
     const metrics = ctx.measureText(text);
     const padX = 8 * o.inv;

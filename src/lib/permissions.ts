@@ -10,12 +10,17 @@ import { isDraftResource, isUnlistedResource } from './visibility';
  */
 export async function listWorkspaceResourceCandidates(
   currentUser: string,
-  options: { includeTimestamps?: boolean; metadataFields?: readonly string[] } = {}
+  options: {
+    includeTimestamps?: boolean;
+    metadataFields?: readonly string[];
+    /** Database to read from (tests); the app pool by default. */
+    db?: { connect(): Promise<{ query: (sql: string, params?: any[]) => Promise<any>; release(): void }> };
+  } = {}
 ): Promise<{
   rows: any[];
   wildcardViewerIds: string[];
 }> {
-  const client = await pool.connect();
+  const client = await (options.db ?? pool).connect();
   const timestamps = options.includeTimestamps === false ? '' : ', created_at, updated_at';
   const metadata = selectMetadataFields(options.metadataFields);
   try {
@@ -97,15 +102,21 @@ export async function listWorkspaceResourceCandidates(
          JOIN ancestor_ids ancestor ON ancestor.id = parent.id
          WHERE parent.type IN ('folder', 'space')
            AND parent.parent_id IS NOT NULL
+       ), visible(id) AS (
+         -- The same set as "owner OR candidate OR ancestor folder", written as
+         -- a union the planner can hash. Spelled as an OR, the ancestor test
+         -- ran as a correlated subplan that rescanned the whole ancestor CTE
+         -- once per folder: measured 168 s at 1M resources, 8 s like this.
+         SELECT id FROM candidates
+         UNION
+         SELECT folder.id
+         FROM resources folder
+         JOIN ancestor_ids ancestor ON ancestor.id = folder.id
+         WHERE folder.type IN ('folder', 'space')
        )
        SELECT id, type, parent_id, owner_id, path, title, is_public, is_draft${timestamps}, ${metadata}
        FROM resources
-       WHERE owner_id = $1
-          OR id = ANY($2::varchar[])
-          OR (
-            type IN ('folder', 'space')
-            AND id IN (SELECT id FROM ancestor_ids)
-          )
+       WHERE id IN (SELECT id FROM visible)
        ORDER BY title ASC`,
       [currentUser, candidate.resource_ids]
     );
@@ -150,6 +161,9 @@ export const WORKSPACE_LIST_METADATA_FIELDS = [
   'summary',
   'unlisted',
   'wikilinks',
+  'relationships',
+  'linkRelationships',
+  'edgeRelationships',
 ] as const;
 
 /** Resources visible to an unauthenticated visitor, verified by OpenFGA. */
@@ -226,6 +240,44 @@ export async function canUserViewResource(resource: ResourcePermissionItem, curr
     console.warn(`[canUserViewResource] OpenFGA evaluation failed for ${currentUser} on ${resource.id}:`, err?.message);
     return false; // Secure default: deny on failure
   }
+}
+
+/**
+ * Batched `canUserViewResource`: the same three layers (owner, draft/unlisted,
+ * engine), but one engine round trip for the whole set instead of one per
+ * resource. Returns the ids the user may view. Fails closed: an engine error or
+ * a missing decision denies.
+ */
+export async function canUserViewResources(
+  resources: readonly ResourcePermissionItem[],
+  currentUser: string,
+  options: {
+    checkBatch?: (params: { user: string; relation: string; objects: string[] }) => Promise<Map<string, boolean>>;
+  } = {}
+): Promise<Set<string>> {
+  const allowed = new Set<string>();
+  const ask: string[] = [];
+  for (const r of resources) {
+    if (!r) continue;
+    if (r.owner_id === currentUser) {
+      allowed.add(r.id);
+      continue;
+    }
+    if (isDraftResource(r) || isUnlistedResource(r)) continue;
+    ask.push(r.id);
+  }
+  if (ask.length === 0) return allowed;
+  try {
+    const decisions = await (options.checkBatch ?? checkPermissionsBatch)({
+      user: currentUser || 'user:anonymous',
+      relation: 'viewer',
+      objects: ask,
+    });
+    for (const id of ask) if (decisions.get(id) === true) allowed.add(id);
+  } catch (err: any) {
+    console.warn(`[canUserViewResources] OpenFGA batch evaluation failed for ${currentUser}:`, err?.message);
+  }
+  return allowed;
 }
 
 export async function canUserEditResource(resource: ResourcePermissionItem, currentUser: string): Promise<boolean> {

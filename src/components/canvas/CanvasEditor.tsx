@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { memo, useMemo, useRef, useState } from 'react';
 import type { JsonCanvasSpec, CanvasNode, CanvasEdge, CanvasPortSide, CanvasColorCode } from './types';
 import { COLOR_MAP } from './types';
 import { EdgeRenderer } from './EdgeRenderer';
@@ -17,6 +17,10 @@ import { useCanvasGestures, type WheelBehavior } from './core/useCanvasGestures'
 import { showToast } from '../ui';
 import { EdgeEndpointLayer } from './core/EdgeEndpointLayer';
 import { NodePortLayer } from './core/NodePortLayer';
+import { useVirtualNodes } from './core/useVirtualNodes';
+import { LodNodeLayer } from './core/LodNodeLayer';
+import { lodFor, type LodLevel } from './core/constants';
+import type { PortSide } from './core/geometry';
 
 interface CanvasEditorProps {
   canvasId: string;
@@ -504,6 +508,141 @@ export const EditorOverlay: React.FC<EditorOverlayProps> = ({ editor, zoom, whee
   );
 };
 
+/**
+ * Handlers for node shells, read through a ref so the shells can be memoised:
+ * the editor's callbacks change identity whenever selection or the document
+ * changes, which would otherwise re-render every mounted node on every frame.
+ */
+interface NodeShellApi {
+  pointerDown: (id: string, e: React.PointerEvent) => void;
+  click: (id: string, e: React.MouseEvent) => void;
+  contextMenu: (id: string, e: React.MouseEvent) => void;
+  hover: (id: string | null) => void;
+  resize: (id: string, e: React.PointerEvent) => void;
+  port: (id: string, side: PortSide, e: React.PointerEvent) => void;
+  doubleClick: (node: CanvasNode) => void;
+}
+
+interface EditorNodeShellProps {
+  node: CanvasNode;
+  api: React.MutableRefObject<NodeShellApi>;
+  currentUser: string;
+  lod: LodLevel;
+  isSelected: boolean;
+  isSingleSelected: boolean;
+  isHovered: boolean;
+  isDraggingNodes: boolean;
+  isDropTarget: boolean;
+  isConnectionTarget: boolean;
+  isConnecting: boolean;
+  snappedPort: PortSide | null;
+  containedCount?: number;
+  outsideCount: number;
+  /** 1/zoom, but only for nodes whose ports are showing; 0 otherwise so zooming does not re-render the rest. */
+  portInv: number;
+}
+
+/**
+ * One node on the editor board. Memoised: during a pan none of its props
+ * change, and during a drag only the moved nodes get a new `node` object.
+ */
+const EditorNodeShell = memo(function EditorNodeShell({
+  node,
+  api,
+  currentUser,
+  lod,
+  isSelected,
+  isSingleSelected,
+  isHovered,
+  isDraggingNodes,
+  isDropTarget,
+  isConnectionTarget,
+  isConnecting,
+  snappedPort,
+  containedCount,
+  outsideCount,
+  portInv,
+}: EditorNodeShellProps) {
+  const local = useMemo(() => ({ ...node, x: 0, y: 0 }), [node]);
+  const id = node.id;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: `${node.x}px`,
+        top: `${node.y}px`,
+        width: `${node.width}px`,
+        height: `${node.height}px`,
+        zIndex: node.type === 'group' ? 1 : 3,
+        cursor: isDraggingNodes ? 'grabbing' : 'grab',
+        // A drop target is ringed rather than recoloured, so the
+        // affordance is legible over any group background image and does
+        // not fight the dashed frame for attention.
+        boxShadow: isDropTarget ? '0 0 0 3px var(--accent-cyan), 0 0 28px rgba(0, 242, 254, 0.45)' : undefined,
+        transition: 'box-shadow 0.12s ease',
+      }}
+      onPointerDown={(e) => api.current.pointerDown(id, e)}
+      onClick={(e) => api.current.click(id, e)}
+      onContextMenu={(e) => api.current.contextMenu(id, e)}
+      onPointerEnter={() => api.current.hover(id)}
+      onPointerLeave={() => api.current.hover(null)}
+      data-canvas-node-id={id}
+      data-drop-target={isConnectionTarget ? 'true' : undefined}
+      data-group-drop-target={isDropTarget ? 'true' : undefined}
+    >
+      <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <NodeRenderer
+          node={local}
+          currentUser={currentUser}
+          isSelected={isSelected}
+          containedCount={containedCount}
+          outsideCount={outsideCount}
+          onGroupPointerDown={(e) => api.current.pointerDown(id, e)}
+          onGroupClick={(e) => api.current.click(id, e)}
+          onDoubleClick={() => api.current.doubleClick(node)}
+          isEditMode={true}
+          lod={lod}
+        />
+
+        {isSingleSelected && (
+          <div
+            onPointerDown={(e) => api.current.resize(id, e)}
+            title="Drag to resize node"
+            style={{
+              position: 'absolute',
+              right: '-6px',
+              bottom: '-6px',
+              width: '14px',
+              height: '14px',
+              borderRadius: '3px',
+              background: 'var(--accent-cyan)',
+              cursor: 'nwse-resize',
+              zIndex: 10,
+              boxShadow: '0 0 8px rgba(0, 242, 254, 0.6)',
+            }}
+          />
+        )}
+
+        <NodePortLayer
+          node={node}
+          inv={portInv}
+          isSelected={isSelected}
+          isHovered={isHovered}
+          isConnecting={isConnecting}
+          snappedPort={snappedPort}
+          onPortPointerDown={(nodeId, side, e) => api.current.port(nodeId, side, e)}
+        />
+      </div>
+    </div>
+  );
+});
+
+/**
+ * Above this many mounted nodes at the farthest zoom level, nodes are painted
+ * on a canvas instead of mounted as DOM (selected ones stay DOM).
+ */
+const LOD_DOM_BUDGET = 600;
+
 export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   canvasId,
   initialData,
@@ -571,7 +710,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       y: node.y - 200,
       width: node.width + 400,
       height: node.height + 400,
-    });
+    }, { animate: true });
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -709,7 +848,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
    * Edges render in screen space, behind the node layer, so the canvas is
    * viewport-sized and strokes stay a constant width at any zoom.
    */
-  const edgeLayer = (
+  const edgeLayerCore = (
     <EdgeRenderer
       edges={editor.edges}
       nodes={editor.nodes}
@@ -740,110 +879,138 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     />
   );
 
+  /**
+   * Only nodes near the viewport are mounted; see core/useVirtualNodes. Pinned
+   * nodes (selection, drop/connection targets, the node being edited) stay
+   * mounted wherever they are so their handles and state survive a pan.
+   */
+  const pinned = useMemo(() => {
+    const set = new Set<string>();
+    if (editor.dropTargetGroupId) set.add(editor.dropTargetGroupId);
+    if (editor.connectionTargetNodeId) set.add(editor.connectionTargetNodeId);
+    if (editor.editingNode) set.add(editor.editingNode.id);
+    return set;
+  }, [editor.dropTargetGroupId, editor.connectionTargetNodeId, editor.editingNode]);
+  const virtual = useVirtualNodes({
+    nodes: editor.nodes,
+    view: viewport.visible,
+    pinned,
+    // Mid-drag the index is frozen, so the moving selection is located by its
+    // live positions; only the part of it near the view is mounted.
+    tracked: editor.selectedNodeIds,
+    interacting: editor.isDraggingNodes || editor.resizingNodeId !== null,
+  });
+  const lod = lodFor(zoom);
+  // Far out with many nodes in view: paint proxies on a canvas, keep only the
+  // pinned ones as DOM so selection handles still work.
+  const paintLod = lod === 'minimal' && virtual.visible.length > LOD_DOM_BUDGET;
+  // In painted mode, selected (and pinned) nodes that are in view stay DOM, on
+  // top of the canvas, so their handles keep working.
+  const domKeep = useMemo(() => {
+    if (!paintLod) return pinned;
+    const set = new Set(pinned);
+    for (const id of editor.selectedNodeIds) set.add(id);
+    return set;
+  }, [paintLod, pinned, editor.selectedNodeIds]);
+  const domNodes = useMemo(
+    () => (paintLod ? virtual.visible.filter((n) => domKeep.has(n.id)) : virtual.visible),
+    [paintLod, virtual.visible, domKeep]
+  );
+
+  const nodeApi = useRef<NodeShellApi>(null as unknown as NodeShellApi);
+  nodeApi.current = {
+    pointerDown: editor.handleNodePointerDown,
+    click: editor.handleNodeClick,
+    contextMenu: editor.handleNodeContextMenu,
+    hover: editor.setHoveredNodeId,
+    resize: editor.startNodeResize,
+    port: editor.startPortConnect,
+    doubleClick: (node) => {
+      if (node.type === 'text') {
+        editor.setEditingNode(node);
+        editor.setEditTextValue(node.text || '');
+      } else if (node.type === 'group') {
+        // Double-click descends, so the next click reaches the
+        // group's own children rather than the group again.
+        editor.handleDrillInto(node.id);
+      }
+    },
+  };
+
+  /**
+   * With proxies painted on a canvas there is no node element under the
+   * pointer, so presses on the board are hit-tested against the spatial index
+   * and routed to the node handlers; a miss falls through to pan / marquee.
+   */
+  const hitPaintedNode = (e: { clientX: number; clientY: number }): CanvasNode | null => {
+    if (!paintLod) return null;
+    const p = viewport.toWorld(e.clientX, e.clientY);
+    return virtual.index.hitTest(p);
+  };
+  const handleBoardPointerDown = (e: React.PointerEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
+    const hit = hitPaintedNode(e);
+    if (hit) {
+      // The shell forwards mouse and pointer presses alike; the node handler
+      // only reads button, modifiers and client coordinates.
+      editor.handleNodePointerDown(hit.id, e as React.PointerEvent);
+      return;
+    }
+    editor.handleBoardPointerDown(e);
+  };
+  const handleBoardContextMenu = (e: React.MouseEvent) => {
+    const hit = hitPaintedNode(e);
+    if (hit) {
+      editor.handleNodeContextMenu(hit.id, e);
+      return;
+    }
+    editor.handleBoardContextMenu(e);
+  };
+
+  const edgeLayer = (
+    <>
+      {edgeLayerCore}
+      {paintLod && (
+        <LodNodeLayer nodes={virtual.visible} transform={viewport.transform} size={viewport.size} skip={domKeep} />
+      )}
+    </>
+  );
+
   const transformLayerContent = (
     <>
       {endpointLayer}
 
-      {editor.nodes.map((node) => {
+      {domNodes.map((node) => {
         const isSelected = editor.selectedNodeIds.has(node.id);
-        const isSingleSelected = isSelected && editor.selectedNodeIds.size === 1;
+        const isHovered = editor.hoveredNodeId === node.id;
+        const isConnecting = Boolean(editor.draftEdge);
+        const isConnectionTarget = editor.connectionTargetNodeId === node.id;
+        const isGroup = node.type === 'group';
         /**
          * From the `parentId` index, not from a geometric scan. Two reasons: the
          * old expression was O(N) per group on every frame of every drag (D9),
          * and it counted a different set than the group actually moved, which is
          * what made the badge and the drag disagree (D2).
          */
-        const containedCount =
-          node.type === 'group' ? editor.groupIndex.containedIds(node.id).length : undefined;
-
+        const containedCount = isGroup ? editor.groupIndex.containedIds(node.id).length : undefined;
         return (
-          <div
+          <EditorNodeShell
             key={node.id}
-            style={{
-              position: 'absolute',
-              left: `${node.x}px`,
-              top: `${node.y}px`,
-              width: `${node.width}px`,
-              height: `${node.height}px`,
-              zIndex: node.type === 'group' ? 1 : 3,
-              cursor: editor.isDraggingNodes ? 'grabbing' : 'grab',
-              // A drop target is ringed rather than recoloured, so the
-              // affordance is legible over any group background image and does
-              // not fight the dashed frame for attention.
-              boxShadow:
-                editor.dropTargetGroupId === node.id
-                  ? '0 0 0 3px var(--accent-cyan), 0 0 28px rgba(0, 242, 254, 0.45)'
-                  : undefined,
-              transition: 'box-shadow 0.12s ease',
-            }}
-            onPointerDown={(e) => editor.handleNodePointerDown(node.id, e)}
-            onClick={(e) => editor.handleNodeClick(node.id, e)}
-            onContextMenu={(e) => editor.handleNodeContextMenu(node.id, e)}
-            onPointerEnter={() => editor.setHoveredNodeId(node.id)}
-            onPointerLeave={() => editor.setHoveredNodeId(null)}
-            data-canvas-node-id={node.id}
-            data-drop-target={editor.connectionTargetNodeId === node.id ? 'true' : undefined}
-            data-group-drop-target={editor.dropTargetGroupId === node.id ? 'true' : undefined}
-          >
-            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-              <NodeRenderer
-                node={{ ...node, x: 0, y: 0 }}
-                currentUser={currentUser}
-                isSelected={isSelected}
-                containedCount={containedCount}
-                outsideCount={
-                  node.type === 'group'
-                    ? editor.groupIndex.childIds(node.id).length -
-                      editor.groupIndex.containedIds(node.id).length
-                    : 0
-                }
-                onGroupPointerDown={(e) => editor.handleNodePointerDown(node.id, e)}
-                onGroupClick={(e) => editor.handleNodeClick(node.id, e)}
-                onDoubleClick={() => {
-                  if (node.type === 'text') {
-                    editor.setEditingNode(node);
-                    editor.setEditTextValue(node.text || '');
-                  } else if (node.type === 'group') {
-                    // Double-click descends, so the next click reaches the
-                    // group's own children rather than the group again.
-                    editor.handleDrillInto(node.id);
-                  }
-                }}
-                isEditMode={true}
-              />
-
-              {isSingleSelected && (
-                <div
-                  onPointerDown={(e) => editor.startNodeResize(node.id, e)}
-                  title="Drag to resize node"
-                  style={{
-                    position: 'absolute',
-                    right: '-6px',
-                    bottom: '-6px',
-                    width: '14px',
-                    height: '14px',
-                    borderRadius: '3px',
-                    background: 'var(--accent-cyan)',
-                    cursor: 'nwse-resize',
-                    zIndex: 10,
-                    boxShadow: '0 0 8px rgba(0, 242, 254, 0.6)',
-                  }}
-                />
-              )}
-
-              <NodePortLayer
-                node={node}
-                inv={1 / Math.max(zoom, 0.01)}
-                isSelected={isSelected}
-                isHovered={editor.hoveredNodeId === node.id}
-                isConnecting={Boolean(editor.draftEdge)}
-                snappedPort={
-                  editor.connectionTargetNodeId === node.id ? editor.connectionTargetSide : null
-                }
-                onPortPointerDown={editor.startPortConnect}
-              />
-            </div>
-          </div>
+            node={node}
+            api={nodeApi}
+            currentUser={currentUser}
+            lod={lod}
+            isSelected={isSelected}
+            isSingleSelected={isSelected && editor.selectedNodeIds.size === 1}
+            isHovered={isHovered}
+            isDraggingNodes={editor.isDraggingNodes}
+            isDropTarget={editor.dropTargetGroupId === node.id}
+            isConnectionTarget={isConnectionTarget}
+            isConnecting={isConnecting}
+            snappedPort={isConnectionTarget ? editor.connectionTargetSide : null}
+            containedCount={containedCount}
+            outsideCount={isGroup ? editor.groupIndex.childIds(node.id).length - (containedCount ?? 0) : 0}
+            portInv={isSelected || isHovered || isConnecting ? 1 / Math.max(zoom, 0.01) : 0}
+          />
         );
       })}
 
@@ -880,9 +1047,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           toolbar={toolbar}
           contextMenu={contextMenu}
           selection={{ nodeIds: editor.selectedNodeIds, edgeIds: editor.selectedEdgeIds }}
-          onPointerDown={editor.handleBoardPointerDown}
+          onPointerDown={handleBoardPointerDown}
           onDoubleClick={handleDoubleClick}
-          onContextMenu={editor.handleBoardContextMenu}
+          onContextMenu={handleBoardContextMenu}
           activeMode={activeMode}
           onModeChange={setActiveMode}
           emptyState={

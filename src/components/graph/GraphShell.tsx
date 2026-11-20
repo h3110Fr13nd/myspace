@@ -237,7 +237,8 @@ export const GraphShell: React.FC<GraphShellProps> = (props) => {
           <button
             type="button"
             className="graph-viewport-bar__expand"
-            onClick={() => {
+            onClick={async () => {
+              if (props.onExpandOverride && (await props.onExpandOverride())) return;
               engine.setIsExpanded(true);
               void props.onExpand?.();
             }}

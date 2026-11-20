@@ -6,6 +6,13 @@
 > **Target**: 60–120 FPS Infinite Canvas, Zero-Jank Navigation, and 100% Feature Parity  
 > **Ordering**: Categorized strictly by **Implementation Simplicity (Tier 1: Quick Wins → Tier 4: Deep Architecture)**
 
+> **Performance status (2026-11-17):** Feature 1.1 (pan/zoom off React state)
+> was already in place; 2.1 (viewport culling — now with hysteresis and a
+> frozen-index drag path), 2.2 (screen-space edge canvas — plus incremental
+> routing, cached paths and motion impostors), 3.1 (LOD — painted proxies far
+> out) and the graph half of 4.2 are implemented and measured in
+> [`docs/perf/SCALING.md`](../../docs/perf/SCALING.md).
+
 ---
 
 ## 🧭 Executive Overview

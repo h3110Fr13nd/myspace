@@ -24,12 +24,27 @@ export class NodeIndex {
   private tree = new RBush<Entry>();
   private byId = new Map<string, CanvasNode>();
   private all: CanvasNode[] = [];
+  /**
+   * Nodes not yet indexed. Building is deferred to the first query: hosts
+   * create an index per document revision (every drag frame), and most
+   * revisions are never queried — building eagerly was an R-tree bulk load of
+   * the whole board per frame.
+   */
+  private pending: readonly CanvasNode[] | null = null;
 
   constructor(nodes: readonly CanvasNode[] = []) {
     this.build(nodes);
   }
 
+  /** (Re)index `nodes`. Cheap: the work happens on the first query. */
   build(nodes: readonly CanvasNode[]): void {
+    this.pending = nodes;
+  }
+
+  private ensure(): void {
+    const nodes = this.pending;
+    if (nodes === null) return;
+    this.pending = null;
     this.tree.clear();
     this.byId.clear();
     this.all = nodes.slice();
@@ -45,24 +60,28 @@ export class NodeIndex {
   }
 
   get size(): number {
-    return this.all.length;
+    return this.pending ? this.pending.length : this.all.length;
   }
 
   /** Every indexed node, in insertion order. */
   nodes(): readonly CanvasNode[] {
+    this.ensure();
     return this.all;
   }
 
   get(id: string): CanvasNode | undefined {
+    this.ensure();
     return this.byId.get(id);
   }
 
   has(id: string): boolean {
+    this.ensure();
     return this.byId.has(id);
   }
 
   /** Nodes whose rect intersects `rect`. */
   search(rect: Rect): CanvasNode[] {
+    this.ensure();
     if (this.all.length === 0) return [];
     const out: CanvasNode[] = [];
     for (const e of this.tree.search({
@@ -105,6 +124,7 @@ export class NodeIndex {
 
   /** Union of all node rects, or `null` when empty. */
   bounds(): Rect | null {
+    this.ensure();
     if (this.all.length === 0) return null;
     let minX = Infinity;
     let minY = Infinity;

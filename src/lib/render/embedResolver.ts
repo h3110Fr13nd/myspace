@@ -194,8 +194,11 @@ export function resolveWikilinks(text: string): string {
       anchorSuffix = isBlock ? `#^${anchor}` : `#${anchor}`;
     }
 
-    const displayText = alias
-      ? alias.trim()
+    // [[target|alias|relationship]]: the third part names a graph
+    // relationship and is not shown; an empty alias falls back to the target.
+    const shown = typeof alias === 'string' ? alias.split('|')[0].trim() : '';
+    const displayText = shown
+      ? shown
       : isBlock && anchor
         ? `${cleanSlug.replace(/-/g, ' ')} (Block: ${anchor})`
         : anchor

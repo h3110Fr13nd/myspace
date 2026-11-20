@@ -301,7 +301,7 @@ export function applyCallouts(markdown: string): string {
       if (isFoldable) {
         result.push(
           `<details class="obsidian-callout obsidian-callout--${meta.type}" data-callout="${meta.type}" ${isDefaultOpen ? 'open' : ''} style="margin: 1.25rem 0; border-radius: 10px; border-left: 4px solid ${meta.colorVar}; border-top: 1px solid ${meta.borderVar}; border-right: 1px solid ${meta.borderVar}; border-bottom: 1px solid ${meta.borderVar}; background: ${meta.bgVar};">` +
-          `<summary class="callout-title" style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #fff; cursor: pointer; padding: 10px 14px; list-style: none; user-select: none;">` +
+          `<summary class="callout-title" style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: ${meta.colorVar}; cursor: pointer; padding: 10px 14px; list-style: none; user-select: none;">` +
           `<span class="callout-icon" style="font-size: 1.05rem;">${meta.icon}</span>` +
           `<span class="callout-label" style="flex: 1;">${title}</span>` +
           `<span class="callout-fold-indicator" style="font-size: 0.75rem; color: var(--text-muted); transition: transform 0.2s ease;">▼</span>` +
@@ -312,7 +312,7 @@ export function applyCallouts(markdown: string): string {
       } else {
         result.push(
           `<div class="obsidian-callout obsidian-callout--${meta.type}" data-callout="${meta.type}" style="margin: 1.25rem 0; border-radius: 10px; border-left: 4px solid ${meta.colorVar}; border-top: 1px solid ${meta.borderVar}; border-right: 1px solid ${meta.borderVar}; border-bottom: 1px solid ${meta.borderVar}; background: ${meta.bgVar};">` +
-          `<div class="callout-title" style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #fff; padding: 10px 14px 6px 14px;">` +
+          `<div class="callout-title" style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: ${meta.colorVar}; padding: 10px 14px 6px 14px;">` +
           `<span class="callout-icon" style="font-size: 1.05rem;">${meta.icon}</span>` +
           `<span class="callout-label">${title}</span>` +
           `</div>` +

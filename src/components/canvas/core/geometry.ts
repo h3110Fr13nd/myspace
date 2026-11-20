@@ -51,19 +51,57 @@ export function nodeCenter(node: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'
 /** Anchor for an explicit side. */
 export function anchorFor(
   node: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>,
-  side: PortSide
+  side: PortSide,
+  /**
+   * Where along the side, 0..1 (left→right for top/bottom, top→bottom for
+   * left/right). 0.5 — the side's midpoint — is the classic port.
+   */
+  t = 0.5
 ): Anchor {
   switch (side) {
     case 'top':
-      return { x: node.x + node.width / 2, y: node.y, nx: 0, ny: -1 };
+      return { x: node.x + node.width * t, y: node.y, nx: 0, ny: -1 };
     case 'bottom':
-      return { x: node.x + node.width / 2, y: node.y + node.height, nx: 0, ny: 1 };
+      return { x: node.x + node.width * t, y: node.y + node.height, nx: 0, ny: 1 };
     case 'left':
-      return { x: node.x, y: node.y + node.height / 2, nx: -1, ny: 0 };
+      return { x: node.x, y: node.y + node.height * t, nx: -1, ny: 0 };
     case 'right':
     default:
-      return { x: node.x + node.width, y: node.y + node.height / 2, nx: 1, ny: 0 };
+      return { x: node.x + node.width, y: node.y + node.height * t, nx: 1, ny: 0 };
   }
+}
+
+/** Within this distance of a side's midpoint (as a fraction of the side), snap to it. */
+export const ANCHOR_CENTER_SNAP = 0.08;
+
+/**
+ * The border point nearest to `p`, Excalidraw-style binding: an edge can attach
+ * anywhere on a node's outline, not only at the four midpoints. Returns the
+ * side and the position along it (`t`, 0..1); `t` is `undefined` when it snaps
+ * to the midpoint, so classic edges stay plain JSON Canvas.
+ */
+export function borderAnchorForPoint(
+  node: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>,
+  p: Point
+): { side: PortSide; t: number | undefined } {
+  const cx = Math.min(node.x + node.width, Math.max(node.x, p.x));
+  const cy = Math.min(node.y + node.height, Math.max(node.y, p.y));
+  const dists: Array<[PortSide, number]> = [
+    ['top', Math.abs(cy - node.y)],
+    ['bottom', Math.abs(node.y + node.height - cy)],
+    ['left', Math.abs(cx - node.x)],
+    ['right', Math.abs(node.x + node.width - cx)],
+  ];
+  // Outside the box the clamped point already lies on the border; inside, the
+  // nearest side wins.
+  dists.sort((a, b) => a[1] - b[1]);
+  const side = dists[0][0];
+  const raw =
+    side === 'top' || side === 'bottom'
+      ? (cx - node.x) / Math.max(1e-9, node.width)
+      : (cy - node.y) / Math.max(1e-9, node.height);
+  const t = Math.min(1, Math.max(0, raw));
+  return { side, t: Math.abs(t - 0.5) < ANCHOR_CENTER_SNAP ? undefined : +t.toFixed(4) };
 }
 
 /**

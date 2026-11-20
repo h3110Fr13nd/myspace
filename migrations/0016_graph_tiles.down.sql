@@ -1,0 +1,16 @@
+DROP TRIGGER IF EXISTS acl_graph_dirty_ins ON resource_effective_acl;
+DROP TRIGGER IF EXISTS acl_graph_dirty_upd ON resource_effective_acl;
+DROP TRIGGER IF EXISTS acl_graph_dirty_del ON resource_effective_acl;
+DROP TRIGGER IF EXISTS acl_graph_dirty ON resource_effective_acl;
+DROP FUNCTION IF EXISTS graph_mark_acl_dirty();
+DROP TRIGGER IF EXISTS resources_graph_dirty_ins ON resources;
+DROP TRIGGER IF EXISTS resources_graph_dirty_upd ON resources;
+DROP TRIGGER IF EXISTS resources_graph_dirty_del ON resources;
+DROP FUNCTION IF EXISTS graph_mark_resources_dirty();
+DROP TRIGGER IF EXISTS graph_nodes_deleted ON graph_nodes;
+DROP FUNCTION IF EXISTS graph_mark_nodes_deleted();
+DROP INDEX IF EXISTS idx_resources_slug;
+DROP TABLE IF EXISTS graph_dirty_gids;
+DROP TABLE IF EXISTS graph_tiles;
+DROP TABLE IF EXISTS graph_scopes;
+DROP TABLE IF EXISTS graph_nodes;

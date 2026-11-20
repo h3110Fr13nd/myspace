@@ -1,3 +1,4 @@
+import { extractInlineRelationships } from '../../../../lib/relationships';
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { query } from '../../../../lib/db';
@@ -133,6 +134,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       summary: validatedFields.data.summary ?? nextSummary,
       ...(icon !== undefined ? { icon } : {}),
       wikilinks: validatedFields.data.wikilinks,
+      // Named relationships written inline as [[target|alias|type]]; derived
+      // from the body, so replaced on every content save.
+      ...(content !== undefined ? { linkRelationships: extractInlineRelationships(content) } : {}),
       filePath: targetFilePath,
     };
 

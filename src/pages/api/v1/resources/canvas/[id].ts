@@ -1,12 +1,56 @@
+import { canvasEdgeRelationships } from '../../../../../lib/relationships';
 import type { APIRoute } from 'astro';
 import { query } from '../../../../../lib/db';
-import { canUserViewResource, canUserEditResource } from '../../../../../lib/permissions';
+import { canUserViewResource, canUserEditResource, canUserViewResources } from '../../../../../lib/permissions';
 import { renderMarkdownWithEmbedsAsync } from '../../../../../lib/renderEngine';
 import { resolveResourceType } from '../../../../../lib/registry/resourceRegistry';
 import { stripHtml } from '../../../../../lib/render/codeHighlighter';
 import * as fs from 'fs';
 import * as path from 'path';
 import { auditContent } from '../../../../../lib/acl/auditContent';
+
+/**
+ * Above this many resource/file nodes, the expensive per-node enrichment
+ * (markdown rendering, paper front-matter parsing, sub-canvas and notebook
+ * loading) is skipped and the response says `enrichment: 'lite'`. Cards
+ * self-hydrate what they need when they scroll into view (the board mounts only
+ * visible nodes), so a huge board costs the server O(nodes) cheap work instead
+ * of one full markdown render per node. `?lite=1` forces it for any size.
+ */
+const HEAVY_ENRICH_LIMIT = Number(process.env.CANVAS_ENRICH_LIMIT ?? 300);
+/** Concurrent node enrichments; bounds event-loop and file-descriptor pressure. */
+const ENRICH_CONCURRENCY = 8;
+
+const exists = (p: string) => fs.promises.access(p).then(() => true, () => false);
+const readText = (p: string) => fs.promises.readFile(p, 'utf-8');
+
+/** Derived, per-viewer fields that must never be persisted into a canvas document. */
+const DERIVED_NODE_FIELDS = ['isAllowed', 'resolvedTitle', 'resolvedSummary', 'resolvedMetadata'] as const;
+
+/** A stored node without derived per-viewer fields (see DERIVED_NODE_FIELDS). */
+function stripDerived<T extends Record<string, any>>(node: T): T {
+  let out: T | null = null;
+  for (const key of DERIVED_NODE_FIELDS) {
+    if (key in node) {
+      out ??= { ...node };
+      delete (out as Record<string, unknown>)[key];
+    }
+  }
+  return out ?? node;
+}
+
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
 
 export const GET: APIRoute = async ({ params, url, locals }) => {
   const rawId = params.id || '';
@@ -36,7 +80,12 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
     // 1. Fetch canvas resource from PostgreSQL
     let canvasRow: any = null;
     const dbRes = await query(
-      `SELECT id, type, parent_id, owner_id, path, title, metadata, is_public, is_draft 
+      // The stored document (which can be megabytes) is left in the database
+      // until the caller has passed the permission check: a denied request
+      // used to parse the whole thing first (~150 ms CPU at 20k nodes), which
+      // made 403s as expensive as successful reads.
+      `SELECT id, type, parent_id, owner_id, path, title, metadata - 'canvasData' AS metadata,
+              (metadata ? 'canvasData') AS has_canvas_data, is_public, is_draft
        FROM resources 
        WHERE id = $1 OR id = $2 OR metadata->>'slug' = $3 OR metadata->>'slug' = $4 
        LIMIT 1`,
@@ -56,14 +105,17 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
       path.join(process.cwd(), 'public', `${cleanId}.canvas`),
     ];
 
-    for (const p of candidateFiles) {
-      if (fs.existsSync(p)) {
-        try {
-          const raw = fs.readFileSync(p, 'utf-8');
-          diskData = JSON.parse(raw);
-          break;
-        } catch (e) {
-          console.warn(`[Canvas API] Failed to parse disk file ${p}:`, e);
+    // Only consult the disk when the database has no copy: a DB-backed canvas
+    // used to pay synchronous stat + read + parse of the file on every request.
+    if (!canvasRow?.has_canvas_data) {
+      for (const p of candidateFiles) {
+        if (await exists(p)) {
+          try {
+            diskData = JSON.parse(await readText(p));
+            break;
+          } catch (e) {
+            console.warn(`[Canvas API] Failed to parse disk file ${p}:`, e);
+          }
         }
       }
     }
@@ -88,7 +140,12 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
     }
 
     // 4. Resolve raw canvas data
-    let rawCanvas = canvasRow?.metadata?.canvasData || diskData || { nodes: [], edges: [] };
+    let storedCanvas: any = null;
+    if (canvasRow?.has_canvas_data) {
+      const docRes = await query(`SELECT metadata->'canvasData' AS canvas_data FROM resources WHERE id = $1`, [canvasRow.id]);
+      storedCanvas = docRes.rows[0]?.canvas_data ?? null;
+    }
+    let rawCanvas = storedCanvas || diskData || { nodes: [], edges: [] };
     const nodes: any[] = Array.isArray(rawCanvas.nodes) ? [...rawCanvas.nodes] : [];
     const edges: any[] = Array.isArray(rawCanvas.edges) ? [...rawCanvas.edges] : [];
 
@@ -111,7 +168,7 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
     }
 
     // Helper to search candidate files across workspace directories
-    const findFileOnDisk = (relPath: string, subdirs: string[] = ['']): string | null => {
+    const findFileOnDisk = async (relPath: string, subdirs: string[] = ['']): Promise<string | null> => {
       if (!relPath) return null;
       const cleanRel = relPath.replace(/^\/+/, '');
       const candidates = [
@@ -126,14 +183,21 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
         }
       }
       for (const p of candidates) {
-        if (fs.existsSync(p)) return p;
+        if (await exists(p)) return p;
       }
       return null;
     };
 
+    // One engine round trip for every referenced resource, instead of one
+    // sequential check per node.
+    const allowedIds = await canUserViewResources([...resourceMetaMap.values()], currentUser);
+    const resourceNodeCount = nodes.filter(
+      (n) => n.resourceId || n.file || n.type === 'resource' || n.type === 'file'
+    ).length;
+    const heavy = url.searchParams.get('lite') !== '1' && resourceNodeCount <= HEAVY_ENRICH_LIMIT;
+
     // 6. Enforce Node-Level Authorization & Universal Polymorphic Enrichment
-    const sanitizedNodes: any[] = [];
-    for (const node of nodes) {
+    const sanitizedNodes: any[] = await mapLimit(nodes, ENRICH_CONCURRENCY, async (node: any) => {
       const typeDef = resolveResourceType({
         type: node.resourceType || node.type,
         id: node.resourceId,
@@ -151,38 +215,33 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
         const targetResId = node.resourceId || (typeof node.file === 'string' && node.file.includes(':') ? node.file : null);
         const targetRes = targetResId ? resourceMetaMap.get(targetResId) : null;
 
-        let allowed = true;
-        if (targetRes) {
-          allowed = await canUserViewResource(targetRes, currentUser);
-        } else {
-          // If resource not in DB, evaluate default open access unless explicitly flagged
-          allowed = true;
-        }
+        // If resource not in DB, evaluate default open access unless explicitly flagged
+        const allowed = targetRes ? allowedIds.has(targetRes.id) : true;
 
         if (allowed) {
           const resType = typeDef.type;
           let resolvedMeta: any = targetRes?.metadata ? { ...targetRes.metadata } : {};
 
           // 1. Enrich Research Papers with full frontmatter, abstract, authors, and methodologies
-          if (resType === 'paper' || (node.resourceId && node.resourceId.startsWith('paper:'))) {
+          if (heavy && (resType === 'paper' || (node.resourceId && node.resourceId.startsWith('paper:')))) {
             let targetPath = resolvedMeta?.filePath;
-            if (targetPath && !fs.existsSync(targetPath)) {
+            if (targetPath && !(await exists(targetPath))) {
               const rel = targetPath.includes('/content/') ? targetPath.slice(targetPath.indexOf('/content/')) : null;
-              if (rel && fs.existsSync(path.join(process.cwd(), rel))) {
+              if (rel && (await exists(path.join(process.cwd(), rel)))) {
                 targetPath = path.join(process.cwd(), rel);
               }
             }
-            if (!targetPath || !fs.existsSync(targetPath)) {
+            if (!targetPath || !(await exists(targetPath))) {
               const slug = resolvedMeta?.slug || (node.resourceId ? node.resourceId.replace('paper:', '') : node.file?.replace(/\.md$/, ''));
               if (slug) {
-                const candidate = findFileOnDisk(`${slug}.md`, ['research/papers', 'research']);
+                const candidate = await findFileOnDisk(`${slug}.md`, ['research/papers', 'research']);
                 if (candidate) targetPath = candidate;
               }
             }
 
-            if (targetPath && fs.existsSync(targetPath)) {
+            if (targetPath && (await exists(targetPath))) {
               try {
-                const fileRaw = fs.readFileSync(targetPath, 'utf-8');
+                const fileRaw = await readText(targetPath);
                 const fmMatch = fileRaw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
                 const yaml = fmMatch ? fmMatch[1] : '';
                 const body = fmMatch ? fmMatch[2] : fileRaw;
@@ -237,23 +296,23 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           }
 
           // 2. Enrich Markdown Documents with full renderedHtml
-          if (resType === 'document' || (node.file && node.file.endsWith('.md') && !resType.includes('paper'))) {
+          if (heavy && (resType === 'document' || (node.file && node.file.endsWith('.md') && !resType.includes('paper')))) {
             let docPath = resolvedMeta?.filePath;
-            if (docPath && !fs.existsSync(docPath)) {
+            if (docPath && !(await exists(docPath))) {
               const rel = docPath.includes('/content/') ? docPath.slice(docPath.indexOf('/content/')) : null;
-              if (rel && fs.existsSync(path.join(process.cwd(), rel))) {
+              if (rel && (await exists(path.join(process.cwd(), rel)))) {
                 docPath = path.join(process.cwd(), rel);
               }
             }
-            if (!docPath || !fs.existsSync(docPath)) {
+            if (!docPath || !(await exists(docPath))) {
               const fileTarget = node.file || (node.resourceId ? node.resourceId.replace(/^doc:/, '') : '');
               if (fileTarget) {
-                docPath = findFileOnDisk(fileTarget.endsWith('.md') ? fileTarget : `${fileTarget}.md`);
+                docPath = await findFileOnDisk(fileTarget.endsWith('.md') ? fileTarget : `${fileTarget}.md`);
               }
             }
-            if (docPath && fs.existsSync(docPath)) {
+            if (docPath && (await exists(docPath))) {
               try {
-                const docRaw = fs.readFileSync(docPath, 'utf-8');
+                const docRaw = await readText(docPath);
                 resolvedMeta.renderedHtml = await renderMarkdownWithEmbedsAsync(docRaw, currentUser);
               } catch (e) {
                 console.warn('[Canvas API] Failed to parse document file:', e);
@@ -262,13 +321,13 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           }
 
           // 3. Enrich Sub-Canvases with live canvasData (nodes, edges)
-          if (resType === 'canvas' || (node.resourceId && node.resourceId.startsWith('canvas:')) || (node.file && node.file.endsWith('.canvas'))) {
+          if (heavy && (resType === 'canvas' || (node.resourceId && node.resourceId.startsWith('canvas:')) || (node.file && node.file.endsWith('.canvas')))) {
             if (!resolvedMeta.canvasData) {
               const subId = (node.resourceId || node.file || node.id).replace(/^canvas:/, '').replace(/\.canvas$/, '');
-              const candidate = findFileOnDisk(`${subId}.canvas`, ['canvas']);
+              const candidate = await findFileOnDisk(`${subId}.canvas`, ['canvas']);
               if (candidate) {
                 try {
-                  const raw = fs.readFileSync(candidate, 'utf-8');
+                  const raw = await readText(candidate);
                   resolvedMeta.canvasData = JSON.parse(raw);
                 } catch (e) {
                   console.warn(`[Canvas API] Failed to parse sub-canvas ${subId}:`, e);
@@ -278,13 +337,13 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           }
 
           // 4. Enrich Excalidraw Sketches with elements and appState
-          if (resType === 'excalidraw' || (node.file && node.file.includes('.excalidraw'))) {
+          if (heavy && (resType === 'excalidraw' || (node.file && node.file.includes('.excalidraw')))) {
             if (!resolvedMeta.elements) {
               const fileTarget = node.file || (node.resourceId ? node.resourceId.replace(/^excalidraw:/, '') : '');
-              const candidate = fileTarget ? findFileOnDisk(fileTarget.endsWith('.excalidraw') ? fileTarget : `${fileTarget}.excalidraw`, ['sketches']) : null;
+              const candidate = fileTarget ? await findFileOnDisk(fileTarget.endsWith('.excalidraw') ? fileTarget : `${fileTarget}.excalidraw`, ['sketches']) : null;
               if (candidate) {
                 try {
-                  const raw = fs.readFileSync(candidate, 'utf-8');
+                  const raw = await readText(candidate);
                   const parsed = JSON.parse(raw);
                   resolvedMeta.elements = parsed.elements || parsed;
                   if (parsed.appState) resolvedMeta.appState = parsed.appState;
@@ -296,13 +355,13 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           }
 
           // 5. Enrich Jupyter Notebooks with cells and metadata
-          if (resType === 'jupyter' || (node.file && node.file.endsWith('.ipynb'))) {
+          if (heavy && (resType === 'jupyter' || (node.file && node.file.endsWith('.ipynb')))) {
             if (!resolvedMeta.cells) {
               const fileTarget = node.file || (node.resourceId ? node.resourceId.replace(/^jupyter:/, '') : '');
-              const candidate = fileTarget ? findFileOnDisk(fileTarget.endsWith('.ipynb') ? fileTarget : `${fileTarget}.ipynb`, ['notebooks']) : null;
+              const candidate = fileTarget ? await findFileOnDisk(fileTarget.endsWith('.ipynb') ? fileTarget : `${fileTarget}.ipynb`, ['notebooks']) : null;
               if (candidate) {
                 try {
-                  const raw = fs.readFileSync(candidate, 'utf-8');
+                  const raw = await readText(candidate);
                   const parsed = JSON.parse(raw);
                   resolvedMeta.cells = parsed.cells || [];
                   resolvedMeta.metadata = parsed.metadata || {};
@@ -315,13 +374,13 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           }
 
           // 6. Enrich Mermaid Diagrams with chart source code
-          if (resType === 'mermaid' || (node.file && (node.file.endsWith('.mmd') || node.file.endsWith('.mermaid')))) {
+          if (heavy && (resType === 'mermaid' || (node.file && (node.file.endsWith('.mmd') || node.file.endsWith('.mermaid'))))) {
             if (!resolvedMeta.chart) {
               const fileTarget = node.file || (node.resourceId ? node.resourceId.replace(/^mermaid:/, '') : '');
-              const candidate = fileTarget ? findFileOnDisk(fileTarget.endsWith('.mmd') || fileTarget.endsWith('.mermaid') ? fileTarget : `${fileTarget}.mmd`, ['diagrams']) : null;
+              const candidate = fileTarget ? await findFileOnDisk(fileTarget.endsWith('.mmd') || fileTarget.endsWith('.mermaid') ? fileTarget : `${fileTarget}.mmd`, ['diagrams']) : null;
               if (candidate) {
                 try {
-                  resolvedMeta.chart = fs.readFileSync(candidate, 'utf-8');
+                  resolvedMeta.chart = await readText(candidate);
                 } catch (e) {
                   console.warn('[Canvas API] Failed to parse mermaid file:', e);
                 }
@@ -330,13 +389,13 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           }
 
           // 7. Enrich Relational Spreadsheets with CSV data
-          if (resType === 'sheet' || (node.file && (node.file.endsWith('.csv') || node.file.endsWith('.tsv')))) {
+          if (heavy && (resType === 'sheet' || (node.file && (node.file.endsWith('.csv') || node.file.endsWith('.tsv'))))) {
             if (!resolvedMeta.csvData) {
               const fileTarget = node.file || (node.resourceId ? node.resourceId.replace(/^sheet:/, '') : '');
-              const candidate = fileTarget ? findFileOnDisk(fileTarget, ['sheets']) : null;
+              const candidate = fileTarget ? await findFileOnDisk(fileTarget, ['sheets']) : null;
               if (candidate) {
                 try {
-                  resolvedMeta.csvData = fs.readFileSync(candidate, 'utf-8');
+                  resolvedMeta.csvData = await readText(candidate);
                 } catch (e) {
                   console.warn('[Canvas API] Failed to parse sheet file:', e);
                 }
@@ -354,17 +413,17 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
           const fallbackTitle = stripHtml(rawFallback);
           const rawResolvedTitle = targetRes?.title || node.label || fallbackTitle;
 
-          sanitizedNodes.push({
-            ...node,
+          return {
+            ...stripDerived(node),
             isAllowed: true,
             resourceType: resType,
             resolvedTitle: stripHtml(rawResolvedTitle),
             resolvedSummary: resolvedMeta?.paperDetails?.abstract || targetRes?.metadata?.summary || targetRes?.metadata?.description || node.text || '',
             resolvedMetadata: resolvedMeta,
-          });
+          };
         } else {
           // SERVER-SIDE REDACTION: completely strip sensitive data from payload
-          sanitizedNodes.push({
+          return {
             id: node.id,
             type: node.type,
             x: node.x,
@@ -377,22 +436,28 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
             isAllowed: false,
             label: '🔒 Access Restricted',
             text: `Sensitive node data redacted. User ${currentUser} lacks explicit permission to view this resource.`,
-          });
+          };
         }
       } else {
         // Standard text, link, group nodes
-        sanitizedNodes.push({
-          ...node,
+        return {
+          ...stripDerived(node),
           isAllowed: true,
-        });
+        };
       }
-    }
+    });
+
+    // The document itself is already in `nodes`/`edges`. Echoing the stored
+    // metadata wholesale doubled every response and, worse, shipped the stored
+    // canvasData verbatim — bypassing the per-node redaction above.
+    const { canvasData: _storedDocument, ...publicMetadata } = canvasRow?.metadata || {};
 
     return new Response(
       JSON.stringify({
         resourceId: canvasResourceId,
         title: canvasTitle,
-        metadata: canvasRow?.metadata || {},
+        metadata: publicMetadata,
+        enrichment: heavy ? 'full' : 'lite',
         nodes: sanitizedNodes,
         edges: edges,
       }),
@@ -424,33 +489,47 @@ export const PUT: APIRoute = async ({ params, request, locals, clientAddress }) 
   const currentUser = locals.user || 'user:anonymous';
 
   try {
-    const payload = await request.json();
-    const { title, nodes = [], edges = [], metadata = {} } = payload;
+    // SECURITY: the edit check below used to be skipped entirely for anonymous
+    // callers (`if (currentUser !== 'user:anonymous' && ...)`), and middleware
+    // does not guard this route, so an unauthenticated PUT could overwrite any
+    // canvas or create one. Writes now require an identity.
+    if (!currentUser || currentUser === 'user:anonymous') {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized', message: 'Sign in to save canvases' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
-    if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+    const payload = await request.json();
+    const { title, edges = [], metadata = {} } = payload;
+    const rawNodes = payload.nodes ?? [];
+
+    if (!Array.isArray(rawNodes) || !Array.isArray(edges)) {
       return new Response(
         JSON.stringify({ error: 'BadRequest', message: 'Payload must include nodes and edges arrays' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
+    // Derived, per-viewer data (resolved titles, rendered HTML of resources the
+    // saver may see) must never be stored in the shared document: it bloats the
+    // row and would be served to viewers who lack access to those resources.
+    const nodes = rawNodes.map((n: any) => (n && typeof n === 'object' ? stripDerived(n) : n));
 
     // 1. Fetch current canvas from DB to check existence and edit permissions
     const dbRes = await query(
-      `SELECT id, owner_id, title, metadata, is_public FROM resources WHERE id = $1 LIMIT 1`,
+      // The previous document is replaced wholesale, so it is never loaded.
+      `SELECT id, owner_id, title, metadata - 'canvasData' AS metadata, is_public FROM resources WHERE id = $1 LIMIT 1`,
       [canvasResourceId]
     );
 
     let canvasRow = dbRes.rows?.[0];
     if (canvasRow) {
-      // Check ReBAC edit permission if not anonymous or if an owner is recorded
-      if (currentUser !== 'user:anonymous' && canvasRow.owner_id && canvasRow.owner_id !== 'user:anonymous') {
-        const canEdit = await canUserEditResource(canvasRow, currentUser);
-        if (!canEdit) {
-          return new Response(
-            JSON.stringify({ error: 'Forbidden', message: `User ${currentUser} cannot edit ${canvasResourceId}` }),
-            { status: 403, headers: { 'Content-Type': 'application/json' } }
-          );
-        }
+      const canEdit = await canUserEditResource(canvasRow, currentUser);
+      if (!canEdit) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden', message: `User ${currentUser} cannot edit ${canvasResourceId}` }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } }
+        );
       }
     }
 
@@ -464,6 +543,8 @@ export const PUT: APIRoute = async ({ params, request, locals, clientAddress }) 
       nodeCount: nodes.length,
       edgeCount: edges.length,
       lastSavedBy: currentUser,
+      // Labelled edges between resource cards are relationships in the graph.
+      edgeRelationships: canvasEdgeRelationships({ nodes, edges }),
       canvasData: {
         nodes,
         edges,
@@ -489,12 +570,12 @@ export const PUT: APIRoute = async ({ params, request, locals, clientAddress }) 
 
     // Invalidate in-memory search index & query caches
 
-    // 4. Sync to filesystem in standard JSON Canvas v1.0 format
-    try {
+    // 4. Mirror to the filesystem in standard JSON Canvas v1.0 format — off the
+    // request path. This used to be a synchronous mkdir + pretty-printed write
+    // of the whole document, blocking the event loop for every request in
+    // flight while a large board saved. Large boards are written compactly.
+    {
       const vaultCanvasDir = path.join(process.cwd(), 'content', 'public_vault', 'canvas');
-      if (!fs.existsSync(vaultCanvasDir)) {
-        fs.mkdirSync(vaultCanvasDir, { recursive: true });
-      }
       const targetFilePath = path.join(vaultCanvasDir, `${cleanId}.canvas`);
       const fileData = {
         title: canvasTitle,
@@ -517,17 +598,21 @@ export const PUT: APIRoute = async ({ params, request, locals, clientAddress }) 
           id: e.id,
           fromNode: e.fromNode,
           fromSide: e.fromSide || undefined,
+          fromAnchor: typeof e.fromAnchor === 'number' ? e.fromAnchor : undefined,
           fromEnd: e.fromEnd || undefined,
           toNode: e.toNode,
           toSide: e.toSide || undefined,
+          toAnchor: typeof e.toAnchor === 'number' ? e.toAnchor : undefined,
           toEnd: e.toEnd || undefined,
           label: e.label || undefined,
           color: e.color || undefined,
         })),
       };
-      fs.writeFileSync(targetFilePath, JSON.stringify(fileData, null, 2), 'utf-8');
-    } catch (fsErr: any) {
-      console.warn(`[Canvas API Warning] Failed to sync to filesystem:`, fsErr.message);
+      const body = nodes.length > 2000 ? JSON.stringify(fileData) : JSON.stringify(fileData, null, 2);
+      void fs.promises
+        .mkdir(vaultCanvasDir, { recursive: true })
+        .then(() => fs.promises.writeFile(targetFilePath, body, 'utf-8'))
+        .catch((fsErr: any) => console.warn(`[Canvas API Warning] Failed to sync to filesystem:`, fsErr?.message));
     }
 
     auditContent({
@@ -580,7 +665,9 @@ export const DELETE: APIRoute = async ({ params, locals, clientAddress }) => {
     }
 
     const canvasRow = dbRes.rows[0];
-    if (currentUser !== 'user:anonymous' && canvasRow.owner_id && canvasRow.owner_id !== currentUser) {
+    // SECURITY: as with PUT, the owner check used to be skipped for anonymous
+    // callers, so an unauthenticated DELETE removed any canvas.
+    if (!currentUser || currentUser === 'user:anonymous' || canvasRow.owner_id !== currentUser) {
       return new Response(
         JSON.stringify({ error: 'Forbidden', message: `Only owner can delete this canvas` }),
         { status: 403, headers: { 'Content-Type': 'application/json' } }
@@ -593,13 +680,9 @@ export const DELETE: APIRoute = async ({ params, locals, clientAddress }) => {
 
     // Optional disk file removal
     const diskPath = path.join(process.cwd(), 'content', 'public_vault', 'canvas', `${cleanId}.canvas`);
-    if (fs.existsSync(diskPath)) {
-      try {
-        fs.unlinkSync(diskPath);
-      } catch (e) {
-        // ignore
-      }
-    }
+    await fs.promises.unlink(diskPath).catch(() => {
+      // Absent or not removable: the database row is the source of truth.
+    });
 
     auditContent({
       actor: currentUser,

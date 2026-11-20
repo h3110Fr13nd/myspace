@@ -1,5 +1,15 @@
 # Architectural Blueprint: Massive Scale (100,000+ Nodes) Knowledge Graph Engine
 
+> **Status (2026-11-17): implemented in a different form — see
+> [`docs/perf/SCALING.md`](../../docs/perf/SCALING.md).** Instead of streaming
+> the whole graph as binary buffers and simulating it in the browser, positions
+> are precomputed server-side (incremental, O(N)) and served as a level-of-detail
+> tile pyramid; the browser draws only the tiles on screen (WebGL2, Canvas2D on
+> software GPUs). Measured at 1M resources: ~0.85 ms server CPU per tile
+> request (~1,100 tiles/s from one process), ~15 KB for the first view and
+> ~45 KB per detail view. No new dependency or service (no PixiJS,
+> Arrow or Cosmograph). Open items are listed under "Limits and next steps" there.
+
 ## Executive Summary
 This document defines the architectural blueprint, memory models, rendering pipelines, and evolutionary roadmap for rendering **1 lakh+ (100,000+) to 1,000,000+ interactive nodes** in the FOSS Content Workspace.
 

@@ -74,12 +74,20 @@ export interface CanvasEdge {
   fromNode: string;
   fromSide?: CanvasPortSide;
   fromEnd?: CanvasEndStyle;
+  /**
+   * Where along `fromSide` the edge attaches, 0..1 (default 0.5, the midpoint).
+   * Lets an edge bind anywhere on a node's border; ignored by plain JSON Canvas
+   * readers, which fall back to the side's midpoint.
+   */
+  fromAnchor?: number;
   /** Free world position of the `from` end while it is detached. */
   fromX?: number;
   fromY?: number;
   toNode: string;
   toSide?: CanvasPortSide;
   toEnd?: CanvasEndStyle;
+  /** Where along `toSide` the edge attaches, 0..1 (see `fromAnchor`). */
+  toAnchor?: number;
   /** Free world position of the `to` end while it is detached. */
   toX?: number;
   toY?: number;

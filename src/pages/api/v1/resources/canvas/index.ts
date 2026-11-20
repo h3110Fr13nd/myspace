@@ -3,26 +3,45 @@ import { query } from '../../../../../lib/db';
 import * as fs from 'fs';
 import * as path from 'path';
 import { json } from '../../../../../lib/api';
+import { filterViewableResources } from '../../../../../lib/permissions';
 
 export const GET: APIRoute = async ({ locals }) => {
+  const currentUser = locals.user || 'user:anonymous';
   try {
+    // Counts come from the database; the documents themselves stay there. This
+    // used to select full metadata — every canvas's entire node/edge payload —
+    // to read two lengths.
     const dbRes = await query(
-      `SELECT id, type, owner_id, title, metadata, created_at, updated_at 
-       FROM resources 
-       WHERE type = 'canvas'
-       ORDER BY updated_at DESC`
+      `SELECT id, type, owner_id, title, parent_id, path, is_public, is_draft, updated_at,
+              jsonb_build_object(
+                'draft', metadata->'draft', 'isDraft', metadata->'isDraft',
+                'unlisted', metadata->'unlisted', 'isUnlisted', metadata->'isUnlisted'
+              ) AS metadata,
+              COALESCE((metadata->>'nodeCount')::int,
+                       jsonb_array_length(CASE WHEN jsonb_typeof(metadata->'canvasData'->'nodes') = 'array'
+                                               THEN metadata->'canvasData'->'nodes' ELSE '[]'::jsonb END)) AS node_count,
+              COALESCE((metadata->>'edgeCount')::int,
+                       jsonb_array_length(CASE WHEN jsonb_typeof(metadata->'canvasData'->'edges') = 'array'
+                                               THEN metadata->'canvasData'->'edges' ELSE '[]'::jsonb END)) AS edge_count
+         FROM resources
+        WHERE type = 'canvas'
+        ORDER BY updated_at DESC`
     );
 
-    const canvases = (dbRes.rows || []).map((row) => ({
+    // SECURITY: this listing returned every canvas — private titles included —
+    // to any caller. It now lists only what the caller may view.
+    const visible = await filterViewableResources(dbRes.rows || [], currentUser);
+
+    const canvases = visible.map((row: any) => ({
       id: row.id,
       title: row.title,
       owner_id: row.owner_id,
-      nodeCount: row.metadata?.nodeCount || row.metadata?.canvasData?.nodes?.length || 0,
-      edgeCount: row.metadata?.edgeCount || row.metadata?.canvasData?.edges?.length || 0,
+      nodeCount: row.node_count || 0,
+      edgeCount: row.edge_count || 0,
       updated_at: row.updated_at,
     }));
 
-    return json({ canvases }, { status: 200 });
+    return json({ canvases }, { status: 200, headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: any) {
     return new Response(
       JSON.stringify({ error: 'InternalError', message: err?.message || 'Failed to list canvases' }),
@@ -33,6 +52,15 @@ export const GET: APIRoute = async ({ locals }) => {
 
 export const POST: APIRoute = async ({ request, locals }) => {
   const currentUser = locals.user || 'user:anonymous';
+
+  // Creating a canvas makes the caller its owner; an anonymous owner meant a
+  // canvas anyone could later rewrite.
+  if (!currentUser || currentUser === 'user:anonymous') {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized', message: 'Sign in to create canvases' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 
   try {
     const payload = await request.json();
@@ -91,20 +119,20 @@ export const POST: APIRoute = async ({ request, locals }) => {
       [canvasResourceId, currentUser, pathVal, title, JSON.stringify(metadata), Boolean(isPublic)]
     );
 
-    // Write to disk
-    try {
+    // Mirror to disk off the request path (see the PUT handler).
+    {
       const vaultCanvasDir = path.join(process.cwd(), 'content', 'public_vault', 'canvas');
-      if (!fs.existsSync(vaultCanvasDir)) {
-        fs.mkdirSync(vaultCanvasDir, { recursive: true });
-      }
       const targetFilePath = path.join(vaultCanvasDir, `${cleanSlug}.canvas`);
-      fs.writeFileSync(
-        targetFilePath,
-        JSON.stringify({ title, nodes: defaultNodes, edges: defaultEdges }, null, 2),
-        'utf-8'
-      );
-    } catch (fsErr: any) {
-      console.warn(`[Canvas POST] Failed to write disk file:`, fsErr.message);
+      void fs.promises
+        .mkdir(vaultCanvasDir, { recursive: true })
+        .then(() =>
+          fs.promises.writeFile(
+            targetFilePath,
+            JSON.stringify({ title, nodes: defaultNodes, edges: defaultEdges }, null, 2),
+            'utf-8'
+          )
+        )
+        .catch((fsErr: any) => console.warn(`[Canvas POST] Failed to write disk file:`, fsErr?.message));
     }
 
     return new Response(

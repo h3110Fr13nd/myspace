@@ -11,24 +11,27 @@
  */
 
 import { ZOOM } from './constants';
+import {
+  centerAt,
+  clampK,
+  fitRect,
+  screenToWorld,
+  visibleWorldRect,
+  worldToScreen,
+  zoomAt as zoomAtShared,
+  type Camera,
+  type CameraPoint,
+  type CameraRect,
+  type CameraSize,
+} from '../../../lib/viewer/camera';
 
-export interface ViewportTransform {
-  x: number;
-  y: number;
-  k: number;
-}
-
-export interface Point {
-  x: number;
-  y: number;
-}
-
-export interface Size {
-  width: number;
-  height: number;
-}
-
-export interface Rect extends Point, Size {}
+// The canvas viewport is the shared camera (`lib/viewer/camera.ts`, also used
+// by the streamed graph); this module adds the canvas zoom limits and rect
+// helpers on top.
+export type ViewportTransform = Camera;
+export type Point = CameraPoint;
+export type Size = CameraSize;
+export type Rect = CameraRect;
 
 export const IDENTITY: ViewportTransform = Object.freeze({ x: 0, y: 0, k: 1 });
 
@@ -45,7 +48,7 @@ export function transformsEqual(a: ViewportTransform, b: ViewportTransform, epsi
 }
 
 export function clampScale(k: number, min: number = ZOOM.min, max: number = ZOOM.max): number {
-  return k < min ? min : k > max ? max : k;
+  return clampK(k, min, max);
 }
 
 /** Serialise to a CSS `transform` value. Uses translate3d to stay on the compositor. */
@@ -55,12 +58,12 @@ export function cssTransform(t: ViewportTransform): string {
 
 /** World point -> screen point. `p` must be relative to the viewport's top-left. */
 export function toScreen(t: ViewportTransform, p: Point): Point {
-  return { x: p.x * t.k + t.x, y: p.y * t.k + t.y };
+  return worldToScreen(t, p);
 }
 
 /** Screen point (viewport-relative) -> world point. */
 export function toWorld(t: ViewportTransform, p: Point): Point {
-  return { x: (p.x - t.x) / t.k, y: (p.y - t.y) / t.k };
+  return screenToWorld(t, p);
 }
 
 /** Screen-space delta -> world-space delta (translation only, no origin shift). */
@@ -83,13 +86,7 @@ export function zoomAt(
   min: number = ZOOM.min,
   max: number = ZOOM.max
 ): ViewportTransform {
-  const k = clampScale(nextK, min, max);
-  if (k === t.k) return t;
-  return {
-    k,
-    x: anchor.x - ((anchor.x - t.x) / t.k) * k,
-    y: anchor.y - ((anchor.y - t.y) / t.k) * k,
-  };
+  return zoomAtShared(t, anchor, nextK, min, max);
 }
 
 export function zoomBy(
@@ -104,12 +101,7 @@ export function zoomBy(
 
 /** The world-space rectangle currently visible inside a `view`-sized viewport. */
 export function visibleRect(t: ViewportTransform, view: Size): Rect {
-  return {
-    x: -t.x / t.k,
-    y: -t.y / t.k,
-    width: view.width / t.k,
-    height: view.height / t.k,
-  };
+  return visibleWorldRect(t, view);
 }
 
 /** Screen-space rectangle currently visible (inverse of `visibleRect`). */
@@ -135,25 +127,16 @@ export function fitTransform(
   view: Size,
   options: FitOptions = {}
 ): ViewportTransform {
+  void t;
   const { padding = 48, min = ZOOM.min, max = ZOOM.max, maxUpscale = 1 } = options;
-
-  const w = Math.max(content.width, 1);
-  const h = Math.max(content.height, 1);
-  const innerW = Math.max(view.width - padding * 2, 1);
-  const innerH = Math.max(view.height - padding * 2, 1);
-
-  const k = clampScale(Math.min(innerW / w, innerH / h, maxUpscale), min, max);
-
-  return {
-    k,
-    x: (view.width - w * k) / 2 - content.x * k,
-    y: (view.height - h * k) / 2 - content.y * k,
-  };
+  // Degenerate (point-like) content is framed as at least 1x1 world unit.
+  const rect = { ...content, width: Math.max(content.width, 1), height: Math.max(content.height, 1) };
+  return fitRect(rect, view, { padding, min, max, maxUpscale });
 }
 
 /** Centre a world-space point in the viewport, optionally at a given zoom. */
 export function centerOn(t: ViewportTransform, point: Point, view: Size, k = t.k): ViewportTransform {
-  return { k, x: view.width / 2 - point.x * k, y: view.height / 2 - point.y * k };
+  return centerAt(point, k, view);
 }
 
 /** Union of a list of rects, or `null` when the list is empty. */

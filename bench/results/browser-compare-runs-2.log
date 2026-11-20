@@ -1,0 +1,12 @@
+{"target":"before","rep":0,"scenario":"canvas viewer 50000","n":50000,"readyMs":-1,"error":"did not finish within 240 s"}
+{"target":"after","rep":0,"scenario":"canvas viewer 50000","n":50000,"readyMs":10863,"p50":16.7,"p95":33.4,"max":2766.5,"jankPct":9.1,"frames":474,"interactionS":26.5,"longTaskMs":8206,"mainMsPerS":584,"scriptMsPerS":98,"layoutMsPerS":3,"heapMb":150,"heapBeforeMb":149.7,"dom":52,"errors":[]}
+{"target":"before","rep":1,"scenario":"canvas viewer 50000","n":50000,"readyMs":16123,"p50":16.7,"p95":2550,"max":5249.8,"jankPct":36.8,"frames":418,"interactionS":193.3,"longTaskMs":186837,"mainMsPerS":1008,"scriptMsPerS":63,"layoutMsPerS":188,"heapMb":146.9,"heapBeforeMb":144.6,"dom":18410,"errors":[]}
+{"target":"after","rep":1,"scenario":"canvas viewer 50000","n":50000,"readyMs":9517,"p50":16.7,"p95":49.9,"max":3299.9,"jankPct":8.7,"frames":492,"interactionS":23.4,"longTaskMs":5932,"mainMsPerS":598,"scriptMsPerS":94,"layoutMsPerS":4,"heapMb":150,"heapBeforeMb":149.7,"dom":52,"errors":[]}
+{"target":"before","rep":2,"scenario":"canvas viewer 50000","n":50000,"readyMs":15552,"p50":16.7,"p95":2449.8,"max":5833.2,"jankPct":33.2,"frames":515,"interactionS":196.6,"longTaskMs":187411,"mainMsPerS":995,"scriptMsPerS":63,"layoutMsPerS":175,"heapMb":146.7,"heapBeforeMb":144.6,"dom":18410,"errors":[]}
+{"target":"after","rep":2,"scenario":"canvas viewer 50000","n":50000,"readyMs":10779,"p50":16.7,"p95":33.4,"max":2566.6,"jankPct":5.8,"frames":446,"interactionS":19.6,"longTaskMs":6710,"mainMsPerS":595,"scriptMsPerS":88,"layoutMsPerS":4,"heapMb":150,"heapBeforeMb":149.7,"dom":52,"errors":[]}
+
+| Scenario | Ready | Frame p50 | p95 | Jank >33ms | Main thread busy | Script | Layout+style | Scripted input took | JS heap | DOM nodes | Notes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| graph tiled (DB) [after] | 2552 ms | 33.3 ms | 133.3 ms | 45.9% | 89% | 109 ms/s | 3 ms/s | 21.3 s | 3.9 MB | 251 | 20 tiles, 368 KB streamed, cache 1.1 MB, GPU 0 MB |
+| canvas viewer 50000 [before] | 16123 ms | 16.7 ms | 2550 ms | 36.8% | 101% | 63 ms/s | 188 ms/s | 196.6 s | 146.9 MB | 18410 |  |
+| canvas viewer 50000 [after] | 10779 ms | 16.7 ms | 33.4 ms | 8.7% | 60% | 94 ms/s | 4 ms/s | 23.4 s | 150 MB | 52 |  |

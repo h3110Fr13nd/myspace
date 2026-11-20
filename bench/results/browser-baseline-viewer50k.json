@@ -1,0 +1,21 @@
+[
+  {
+    "scenario": "canvas viewer 50000",
+    "n": 50000,
+    "readyMs": 4838,
+    "p50": 33.3,
+    "p95": 1333.3,
+    "max": 1866.6,
+    "jankPct": 49.3,
+    "frames": 298,
+    "interactionS": 87.9,
+    "longTaskMs": 83596,
+    "mainMsPerS": 1007,
+    "scriptMsPerS": 63,
+    "layoutMsPerS": 181,
+    "heapMb": 146.7,
+    "heapBeforeMb": 144.4,
+    "dom": 18410,
+    "errors": []
+  }
+]

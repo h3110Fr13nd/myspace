@@ -22,6 +22,7 @@ import * as path from 'path';
 import pg from 'pg';
 import { OpenFgaClient } from '@openfga/sdk';
 import { withAclCacheInvalidation } from '../src/lib/aclCache';
+import { canvasEdgeRelationships, extractInlineRelationships, stripMarkdownCode } from '../src/lib/relationships';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -150,7 +151,10 @@ async function syncVault(
 
     if (ext === '.md' || ext === '.mdx') {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      const { meta } = parseFrontmatter(raw);
+      const { meta, body } = parseFrontmatter(raw);
+      // Links written in the body count too (not only a `wikilinks:` key).
+      const bodyLinks = Array.from(stripMarkdownCode(body).matchAll(/(?<!!)\[\[([^\]|#]+)[^\]]*\]\]/g)).map((m) => m[1].trim());
+      const wikilinks = [...new Set([...(Array.isArray(meta.wikilinks) ? meta.wikilinks : []), ...bodyLinks])];
       const slug = meta.slug || slugify(fileName);
       const title = meta.title || fileName;
       const tags: string[] = Array.isArray(meta.tags) ? meta.tags : [];
@@ -177,7 +181,9 @@ async function syncVault(
         filePath,
         tier,
         isMdx: ext === '.mdx',
-        wikilinks: meta.wikilinks || [],
+        wikilinks,
+        ...(meta.relationships ? { relationships: meta.relationships } : {}),
+        linkRelationships: extractInlineRelationships(body),
       });
 
       await db.query(
@@ -233,6 +239,7 @@ async function syncVault(
         slug,
         category,
         filePath,
+        edgeRelationships: canvasEdgeRelationships(canvasJson),
         nodeCount: canvasJson.nodes?.length || 0,
         edgeCount: canvasJson.edges?.length || 0,
       });

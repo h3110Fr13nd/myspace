@@ -2,6 +2,9 @@ import * as d3 from 'd3';
 import type { GraphNode, GraphLink } from './constants';
 import { ENTITY_META, normalizeEntityType, getNodeRadius as getBaseNodeRadius, getNodeColor as getBaseNodeColor } from './constants';
 import { bindLinksToNodes, computeDegrees, createGraphSimulation } from './simulation';
+import { frameCanvasOptions, isSoftwareRendering } from '../../lib/viewer/gpuTier';
+import { centeredSlot, pairKey, slotsByKey } from '../../lib/viewer/parallel';
+import { LabelLayer, type LabelCandidate } from './tiled/labels';
 
 export interface CanvasRendererContext {
   canvas: HTMLCanvasElement;
@@ -58,7 +61,15 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
     zoomBadgeRef,
   } = ctx;
 
-  const context2d = canvas.getContext('2d');
+  // CPU-backed on software rendering (see lib/viewer/gpuTier): this canvas is
+  // redrawn on every simulation tick, and an accelerated canvas there is read
+  // back from the GPU process on every frame.
+  const context2d = canvas.getContext('2d', frameCanvasOptions());
+  // In software rasterisation, a stroke wider than one device pixel goes through
+  // Skia's general stroker, which turns the whole (self-intersecting) link path
+  // into a polygon fill; a 1-device-pixel stroke takes the hairline fast path.
+  // Measured on a settled 1k-node graph: 4x less raster time per frame.
+  const hairlineLinks = isSoftwareRendering();
   if (!context2d) return () => {};
 
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -81,7 +92,24 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
   const linksCopy: GraphLink[] = links.map((l) => ({
     source: typeof l.source === 'object' ? l.source.id : l.source,
     target: typeof l.target === 'object' ? l.target.id : l.target,
+    ...(l.label ? { label: l.label } : {}),
   }));
+  // Several links between one pair (named relationships) fan out as curves:
+  // each gets a bend, measured against the pair's canonical direction so
+  // links in opposite directions do not overlap.
+  slotsByKey(linksCopy as any[], (l) => pairKey(l.source, l.target)).forEach((slot, i) => {
+    const l = linksCopy[i] as any;
+    if (!slot || slot.total < 2) return;
+    const flip = (l.source as string) < (l.target as string) ? 1 : -1;
+    l.bend = centeredSlot(slot.index, slot.total) * 0.35 * flip;
+  });
+  const hasNamedLinks = linksCopy.some((l) => l.label);
+  /** Quadratic control point of a bent link (world coords). */
+  const ctrlOf = (l: any) => {
+    const dx = l.target.x - l.source.x;
+    const dy = l.target.y - l.source.y;
+    return { x: (l.source.x + l.target.x) / 2 - dy * l.bend, y: (l.source.y + l.target.y) / 2 + dx * l.bend };
+  };
 
   bindLinksToNodes(nodesCopy, linksCopy);
 
@@ -111,8 +139,56 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
   });
   simulationRef.current = simulation;
 
-  const quadtree = d3.quadtree<GraphNode>().x((d) => d.x ?? 0).y((d) => d.y ?? 0).addAll(nodesCopy);
-  quadtreeRef.current = quadtree;
+  // The hit-test quadtree is rebuilt lazily — on the next pointer query after
+  // the simulation moved nodes — instead of on every tick (O(n log n) per tick,
+  // ~300 ticks per settle, for a structure only read on pointer events).
+  let quadtreeDirty = true;
+  const getQuadtree = (): d3.Quadtree<GraphNode> => {
+    if (quadtreeDirty || !quadtreeRef.current) {
+      quadtreeRef.current = d3.quadtree<GraphNode>().x((d) => d.x ?? 0).y((d) => d.y ?? 0).addAll(nodesCopy);
+      quadtreeDirty = false;
+    }
+    return quadtreeRef.current;
+  };
+  getQuadtree();
+
+  // Canvas cannot resolve CSS variables; `strokeStyle = 'var(--x)'` is
+  // silently ignored. Resolve the tokens once.
+  const css = typeof document !== 'undefined' ? getComputedStyle(document.documentElement) : null;
+  const accentBright = css?.getPropertyValue('--accent-cyan-bright').trim() || '#00f2fe';
+  const lightTheme = typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light';
+  // Named-relationship labels: readable on either theme.
+  const relText = lightTheme ? '#92400e' : 'rgba(253, 224, 71, 1)';
+  const relHalo = lightTheme ? 'rgba(255, 255, 255, 0.92)' : 'rgba(8, 12, 24, 0.9)';
+  const relLine = lightTheme ? 'rgba(217, 119, 6, 0.7)' : 'rgba(250, 204, 21, 0.75)';
+  const labelPalette = {
+    text: css?.getPropertyValue('--text-secondary').trim() || '#cbd5e1',
+    hub: css?.getPropertyValue('--text-primary').trim() || '#ffffff',
+    mine: css?.getPropertyValue('--status-warning').trim() || '#f59e0b',
+    halo: css?.getPropertyValue('--bg-primary').trim() || '#0b0f19',
+  };
+  // Labels go through the same placer as the tiled view: a budget, heaviest
+  // first, no overlaps. Drawing every label every tick was the renderer's
+  // dominant cost (text is the most expensive thing a 2D canvas draws).
+  const labels = new LabelLayer('600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+  let lastInteraction = 0;
+
+  // Per-node values that do not change from frame to frame.
+  const count = nodesCopy.length;
+  const degreeOf = new Float64Array(count);
+  const radiusOf = new Float64Array(count);
+  const folderOf = new Uint8Array(count);
+  const hubOf = new Uint8Array(count);
+  const colorOf: string[] = new Array(count);
+  for (let i = 0; i < count; i++) {
+    const n = nodesCopy[i];
+    const deg = nodeDegrees.get(n.id) || 0;
+    degreeOf[i] = deg;
+    radiusOf[i] = getNodeRadius(n, deg);
+    folderOf[i] = normalizeEntityType(n) === 'folder' ? 1 : 0;
+    hubOf[i] = deg >= 3 || folderOf[i] || n.id === activeNodeId ? 1 : 0;
+    colorOf[i] = getNodeColor(n);
+  }
 
   let rafId: number | null = null;
   const render = () => {
@@ -124,6 +200,15 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
     const hId = hoveredNodeIdRef.current;
     const neighborSet = hId ? adjacency.get(hId) || new Set([hId]) : null;
 
+    // World rect on screen, padded so labels that start just off-screen and
+    // links that cross the view are kept.
+    const pad = 160 / k;
+    const vx0 = -transform.x / k - pad;
+    const vy0 = -transform.y / k - pad;
+    const vx1 = (width - transform.x) / k + pad;
+    const vy1 = (height - transform.y) / k + pad;
+    const inView = (x: number, y: number) => x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1;
+
     context2d.setTransform(dpr, 0, 0, dpr, 0, 0);
     context2d.clearRect(0, 0, width, height);
 
@@ -131,54 +216,118 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
     context2d.translate(transform.x, transform.y);
     context2d.scale(k, k);
 
-    // 1. Draw Links
+    // 1. Draw Links (culled: skip a link whose bounding box misses the view)
     context2d.beginPath();
-    context2d.strokeStyle = 'rgba(0, 242, 254, 0.35)';
-    context2d.lineWidth = 1.2 / k;
-    linksCopy.forEach((l: any) => {
-      if (l.source.x === undefined || l.target.x === undefined) return;
-      if (neighborSet && neighborSet.has(l.source.id) && neighborSet.has(l.target.id)) return;
-      context2d.moveTo(l.source.x, l.source.y);
-      context2d.lineTo(l.target.x, l.target.y);
-    });
+    context2d.strokeStyle = hairlineLinks ? 'rgba(0, 242, 254, 0.45)' : 'rgba(0, 242, 254, 0.35)';
+    context2d.lineWidth = hairlineLinks ? 1 / (k * dpr) : 1.2 / k;
+    for (const l of linksCopy as any[]) {
+      const sx = l.source.x;
+      const tx = l.target.x;
+      if (sx === undefined || tx === undefined) continue;
+      const sy = l.source.y;
+      const ty = l.target.y;
+      if ((sx < vx0 && tx < vx0) || (sx > vx1 && tx > vx1) || (sy < vy0 && ty < vy0) || (sy > vy1 && ty > vy1)) continue;
+      if (neighborSet && neighborSet.has(l.source.id) && neighborSet.has(l.target.id)) continue;
+      if (l.label) continue; // drawn in the named-relationship pass
+      context2d.moveTo(sx, sy);
+      if (l.bend) {
+        const c = ctrlOf(l);
+        context2d.quadraticCurveTo(c.x, c.y, tx, ty);
+      } else context2d.lineTo(tx, ty);
+    }
     context2d.globalAlpha = neighborSet ? 0.08 : 1.0;
     context2d.stroke();
 
     // Highlighted Incident Links
     if (neighborSet && hId) {
       context2d.beginPath();
-      context2d.strokeStyle = 'var(--accent-cyan-bright)';
+      context2d.strokeStyle = accentBright;
       context2d.lineWidth = 2.0 / k;
       context2d.globalAlpha = 1.0;
-      linksCopy.forEach((l: any) => {
-        if (l.source.x === undefined || l.target.x === undefined) return;
+      for (const l of linksCopy as any[]) {
+        if (l.source.x === undefined || l.target.x === undefined) continue;
         if (l.source.id === hId || l.target.id === hId) {
           context2d.moveTo(l.source.x, l.source.y);
-          context2d.lineTo(l.target.x, l.target.y);
+          if (l.bend) {
+            const c = ctrlOf(l);
+            context2d.quadraticCurveTo(c.x, c.y, l.target.x, l.target.y);
+          } else context2d.lineTo(l.target.x, l.target.y);
         }
-      });
+      }
       context2d.stroke();
     }
 
-    // 2. Draw Nodes & Hub Halos
-    nodesCopy.forEach((n: any) => {
-      if (n.x === undefined || n.y === undefined) return;
+    // Named relationships: a distinct colour, curved when a pair has several,
+    // with the relationship name at the midpoint once zoomed in (or when the
+    // link touches the hovered node).
+    if (hasNamedLinks) {
+      const named: any[] = [];
+      context2d.beginPath();
+      context2d.strokeStyle = relLine;
+      context2d.lineWidth = 1.4 / k;
+      for (const l of linksCopy as any[]) {
+        if (!l.label || l.source.x === undefined || l.target.x === undefined) continue;
+        const { x: sx, y: sy } = l.source;
+        const { x: tx, y: ty } = l.target;
+        if ((sx < vx0 && tx < vx0) || (sx > vx1 && tx > vx1) || (sy < vy0 && ty < vy0) || (sy > vy1 && ty > vy1)) continue;
+        context2d.moveTo(sx, sy);
+        if (l.bend) {
+          const c = ctrlOf(l);
+          context2d.quadraticCurveTo(c.x, c.y, tx, ty);
+        } else context2d.lineTo(tx, ty);
+        named.push(l);
+      }
+      context2d.globalAlpha = neighborSet ? 0.5 : 1.0;
+      context2d.stroke();
+      context2d.globalAlpha = 1.0;
+      // Small previews (the sidebar) show names only on hover; the full view
+      // once zoomed in.
+      const showAll = k >= 0.9 && width >= 600;
+      if (named.length && (showAll || hId)) {
+        context2d.font = `${11 / k}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        context2d.textAlign = 'center';
+        context2d.textBaseline = 'middle';
+        context2d.lineWidth = 3 / k;
+        context2d.strokeStyle = relHalo;
+        context2d.fillStyle = relText;
+        for (const l of named) {
+          if (!showAll && l.source.id !== hId && l.target.id !== hId) continue;
+          // Midpoint of the (possibly curved) link: the quadratic at t = 0.5.
+          let mx = (l.source.x + l.target.x) / 2;
+          let my = (l.source.y + l.target.y) / 2;
+          if (l.bend) {
+            const c = ctrlOf(l);
+            mx = (mx + c.x) / 2;
+            my = (my + c.y) / 2;
+          }
+          context2d.strokeText(l.label, mx, my);
+          context2d.fillText(l.label, mx, my);
+        }
+      }
+    }
+
+    // 2. Draw Nodes & Hub Halos (culled to the view)
+    const candidates: LabelCandidate[] = [];
+    for (let i = 0; i < count; i++) {
+      const n = nodesCopy[i] as any;
+      if (n.x === undefined || n.y === undefined || !inView(n.x, n.y)) continue;
       const isHoveredOrNeighbor = !neighborSet || neighborSet.has(n.id);
       context2d.globalAlpha = isHoveredOrNeighbor ? 1.0 : 0.15;
 
-      const deg = nodeDegrees.get(n.id) || 0;
-      const baseR = getNodeRadius(n, deg);
+      const deg = degreeOf[i];
+      const baseR = radiusOf[i];
       const r = k > currentBp ? baseR * counterScale : Math.max(2.5 / k, baseR);
-      const isFolder = normalizeEntityType(n) === 'folder';
+      const isFolder = folderOf[i] === 1;
       const isRead = readIdsRef.current.has(n.id);
       const isActive = n.id === activeNodeId;
-      const isHub = deg >= 3 || isFolder || isActive;
+      const isHub = hubOf[i] === 1;
+      const color = colorOf[i];
 
       // Hub Aura Halo
       if (isHub) {
         context2d.beginPath();
         context2d.arc(n.x, n.y, r + (isActive ? 4.5 : 2.5) * counterScale, 0, Math.PI * 2);
-        context2d.strokeStyle = getNodeColor(n);
+        context2d.strokeStyle = color;
         context2d.lineWidth = (isActive ? 1.5 : 1.0) / k;
         context2d.globalAlpha = isHoveredOrNeighbor ? (isActive ? 0.85 : 0.35) : 0.08;
         if (isActive) context2d.setLineDash([3 * counterScale, 2 * counterScale]);
@@ -188,7 +337,7 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
       }
 
       // Circle Fill
-      context2d.fillStyle = getNodeColor(n);
+      context2d.fillStyle = color;
       context2d.beginPath();
       context2d.arc(n.x, n.y, r, 0, Math.PI * 2);
       context2d.fill();
@@ -199,32 +348,51 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
         : isActive
         ? '#ffffff'
         : isFolder
-        ? 'var(--accent-cyan-bright)'
+        ? accentBright
         : isHub
         ? '#ffffff'
         : 'rgba(255, 255, 255, 0.85)';
       context2d.lineWidth = (isRead ? 2.2 : isFolder ? 1.8 : isHub ? 1.5 : 1.0) / k;
       context2d.stroke();
 
-      // 3. Draw Labels
+      // 3. Collect label candidates (placed and drawn after the nodes).
       const shouldShowLabel =
         showLabelsRef.current === 'always'
-          ? isActive || isHoveredOrNeighbor || (isHub ? k >= 0.4 : k >= 0.65)
-          : isHoveredOrNeighbor;
+          ? isActive || (neighborSet ? isHoveredOrNeighbor : false) || (isHub ? k >= 0.4 : k >= 0.65)
+          : isHoveredOrNeighbor && neighborSet !== null;
 
       if (shouldShowLabel) {
-        const labelText = getNodeLabel(n);
-        const fontSize = (isFolder ? 11 : isHub ? Math.min(12, 9.5 + Math.sqrt(deg) * 0.6) : 9.5) * counterScale;
-        context2d.font = `${isFolder || isActive || isHub ? '700' : '500'} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        context2d.fillStyle = isRead ? '#34d399' : isFolder ? 'var(--accent-cyan-bright)' : isHub ? '#ffffff' : '#e2e8f0';
-        context2d.textAlign = 'left';
-        context2d.textBaseline = 'middle';
-        context2d.fillText(labelText, n.x + (r + 4) * counterScale, n.y + 1 * counterScale);
+        candidates.push({
+          sx: n.x * k + transform.x,
+          sy: n.y * k + transform.y,
+          r: r * k,
+          text: getNodeLabel(n),
+          priority:
+            (isActive ? 4e9 : 0) + (neighborSet && isHoveredOrNeighbor ? 2e9 : 0) + (isFolder || isHub ? 1e9 : 0) + deg,
+          hub: isHub || isActive,
+          mine: false,
+          color: isRead ? '#34d399' : isFolder ? accentBright : undefined,
+        });
       }
-    });
+    }
 
     context2d.restore();
+
+    // Labels in screen space, within a budget; fewer while the simulation or
+    // the camera is moving, all of the budget once things settle.
+    const busy = simulation.alpha() > 0.05 || performance.now() - lastInteraction < 200;
+    context2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+    labels.draw(context2d, candidates, { width, height }, busy ? 40 : 150, labelPalette);
+    // Once the simulation stops ticking nothing else triggers a frame, so make
+    // sure the settled view gets its full label budget.
+    if (busy && settleTimer === null) {
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        requestRender();
+      }, 250);
+    }
   };
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const requestRender = () => {
     if (rafId === null) rafId = requestAnimationFrame(render);
@@ -232,8 +400,7 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
   requestRenderRef.current = requestRender;
 
   simulation.on('tick', () => {
-    const qt = d3.quadtree<GraphNode>().x((d) => d.x ?? 0).y((d) => d.y ?? 0).addAll(nodesCopy);
-    quadtreeRef.current = qt;
+    quadtreeDirty = true;
     requestRender();
   });
 
@@ -246,14 +413,14 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
       if (event.type === 'mousedown') {
         const rect = canvas.getBoundingClientRect();
         const [wx, wy] = transformRef.current.invert([event.clientX - rect.left, event.clientY - rect.top]);
-        const qt = quadtreeRef.current;
-        return !qt?.find(wx, wy, 20 / transformRef.current.k);
+        return !getQuadtree().find(wx, wy, 20 / transformRef.current.k);
       }
       // We handle wheel events manually below for native 2-finger trackpad panning + pinch-to-zoom
       if (event.type === 'wheel') return false;
       return true;
     })
     .on('zoom', (event) => {
+      lastInteraction = performance.now();
       transformRef.current = event.transform;
       if (zoomBadgeRef.current) zoomBadgeRef.current.textContent = `${Math.round(event.transform.k * 100)}%`;
       requestRender();
@@ -312,8 +479,7 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
     .subject((event) => {
       const transform = transformRef.current;
       const [wx, wy] = transform.invert([event.x, event.y]);
-      const qt = quadtreeRef.current;
-      const hit = qt?.find(wx, wy, 25 / transform.k);
+      const hit = getQuadtree().find(wx, wy, 25 / transform.k);
       if (!hit) return null;
       const [sx, sy] = transform.apply([hit.x ?? 0, hit.y ?? 0]);
       return { ...hit, x: sx, y: sy, targetNode: hit } as any;
@@ -360,8 +526,7 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
     const rect = canvas.getBoundingClientRect();
     const transform = transformRef.current;
     const [wx, wy] = transform.invert([event.clientX - rect.left, event.clientY - rect.top]);
-    const qt = quadtreeRef.current;
-    const hit = qt?.find(wx, wy, 20 / transform.k);
+    const hit = getQuadtree().find(wx, wy, 20 / transform.k);
 
     if (hit) {
       canvas.style.cursor = 'pointer';
@@ -400,6 +565,7 @@ export function setupCanvasEngine(ctx: CanvasRendererContext): () => void {
 
   return () => {
     if (rafId !== null) cancelAnimationFrame(rafId);
+    if (settleTimer !== null) clearTimeout(settleTimer);
     simulation.stop();
     canvas.removeEventListener('mousemove', handleMouseMove);
     canvas.removeEventListener('mouseleave', handleMouseLeave);

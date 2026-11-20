@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { memo, useEffect, useState, useRef, useMemo } from 'react';
 import { GroupIndex } from './core/grouping';
 import ReactDOM from 'react-dom';
-import RBush from 'rbush';
 import type { JsonCanvasSpec, CanvasNode } from './types';
+import { useVirtualNodes } from './core/useVirtualNodes';
+import { LodNodeLayer } from './core/LodNodeLayer';
 import { EdgeRenderer } from './EdgeRenderer';
 import { CanvasToolbar } from './CanvasToolbar';
 import { NodeRenderer } from './nodes/NodeRenderer';
@@ -10,13 +11,47 @@ import { CanvasJsonEditorModal } from './CanvasJsonEditorModal';
 import { getRandomColor } from '../../lib/editor/collaboration';
 import { useCollaboration } from '../../lib/editor/useCollaboration';
 
-interface SpatialNodeItem {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
+/** Far out with more than this many nodes in view, proxies are painted on a canvas. */
+const VIEWER_LOD_DOM_BUDGET = 600;
+
+interface ViewerNodeItemProps {
   node: CanvasNode;
+  currentUser: string;
+  depth: number;
+  lod: 'full' | 'medium' | 'minimal';
+  isSelected: boolean;
+  containedCount?: number;
+  onSelect: React.MutableRefObject<(nodeId: string, e: React.MouseEvent) => void>;
 }
+
+/**
+ * One node in the read-only viewer. Memoised with a ref-held click handler, so
+ * a pan frame (which re-renders the viewer) does not re-render a single node.
+ */
+const ViewerNodeItem = memo(function ViewerNodeItem({
+  node,
+  currentUser,
+  depth,
+  lod,
+  isSelected,
+  containedCount,
+  onSelect,
+}: ViewerNodeItemProps) {
+  return (
+    <div onClick={(e) => onSelect.current(node.id, e)} style={{ display: 'contents' }}>
+      <NodeRenderer
+        node={node}
+        currentUser={currentUser}
+        containedCount={containedCount}
+        depth={depth}
+        lod={lod}
+        isSelected={isSelected}
+      />
+    </div>
+  );
+});
+
+const EMPTY_NODES: CanvasNode[] = [];
 
 export interface CanvasViewerProps {
   canvasId?: string;
@@ -106,23 +141,6 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({
     };
   }, [canvasData]);
 
-  // Spatial Index (R-Tree) for O(log N) Viewport Frustum Culling
-  const spatialTree = useMemo(() => {
-    const tree = new RBush<SpatialNodeItem>();
-    if (canvasData?.nodes && canvasData.nodes.length > 0) {
-      tree.load(
-        canvasData.nodes.map((n) => ({
-          minX: n.x,
-          minY: n.y,
-          maxX: n.x + n.width,
-          maxY: n.y + n.height,
-          node: n,
-        }))
-      );
-    }
-    return tree;
-  }, [canvasData?.nodes]);
-
   // Viewport Level of Detail (LOD)
   const lodLevel: 'full' | 'medium' | 'minimal' =
     zoom >= 0.65 ? 'full' : zoom >= 0.35 ? 'medium' : 'minimal';
@@ -137,37 +155,28 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({
     viewportDims.height ||
     (typeof window !== 'undefined' ? window.innerHeight : 1080);
 
-  // Viewport Spatial Bounding Box for O(1) Culling
-  const viewportBounds = useMemo(() => {
-    const vWidth = activeViewportWidth;
-    const vHeight = activeViewportHeight;
-
-    // Generous buffer in canvas coordinates: ensures nodes remain 100% visible
-    // until every pixel has left the screen, with zero pop-in during panning.
-    const buffer = Math.max(1000 / Math.max(zoom, 0.15), 1000);
-
-    return {
-      minX: (-pan.x / zoom) - buffer,
-      minY: (-pan.y / zoom) - buffer,
-      maxX: ((-pan.x + vWidth) / zoom) + buffer,
-      maxY: ((-pan.y + vHeight) / zoom) + buffer,
-    };
-  }, [pan.x, pan.y, zoom, activeViewportWidth, activeViewportHeight]);
-
-  // Visible Nodes (Spatially Culled via RBush)
-  const visibleNodes = useMemo(() => {
-    if (!canvasData?.nodes || canvasData.nodes.length <= 50) {
-      return canvasData?.nodes || [];
-    }
-    const results = spatialTree.search(viewportBounds).map((item) => item.node);
-    // Always preserve group nodes so bounding outlines don't pop out
-    const groupNodes = canvasData.nodes.filter((n) => n.type === 'group');
-    const uniqueSet = new Set(results.map((n) => n.id));
-    groupNodes.forEach((g) => {
-      if (!uniqueSet.has(g.id)) results.push(g);
-    });
-    return results;
-  }, [canvasData?.nodes, spatialTree, viewportBounds]);
+  /**
+   * Viewport culling with hysteresis (core/useVirtualNodes): the mounted list
+   * is prepared for a padded rect and reused until the view leaves it, so a pan
+   * usually re-renders nothing. Groups are culled like everything else; the
+   * padding is what keeps their frames from popping at the edges.
+   */
+  const selectedPinned = useMemo(() => new Set(selectedNodeId ? [selectedNodeId] : []), [selectedNodeId]);
+  const virtual = useVirtualNodes({
+    nodes: canvasData?.nodes ?? EMPTY_NODES,
+    view: {
+      x: -pan.x / zoom,
+      y: -pan.y / zoom,
+      width: activeViewportWidth / zoom,
+      height: activeViewportHeight / zoom,
+    },
+    pinned: selectedPinned,
+    threshold: 50,
+  });
+  const paintLod = lodLevel === 'minimal' && virtual.visible.length > VIEWER_LOD_DOM_BUDGET;
+  const visibleNodes = paintLod ? virtual.visible.filter((n) => selectedPinned.has(n.id)) : virtual.visible;
+  const visibleGroups = useMemo(() => visibleNodes.filter((n) => n.type === 'group'), [visibleNodes]);
+  const visibleCards = useMemo(() => visibleNodes.filter((n) => n.type !== 'group'), [visibleNodes]);
 
   const selectedNode = useMemo(() => {
     return canvasData?.nodes.find((n) => n.id === selectedNodeId) || null;
@@ -190,6 +199,8 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({
     e.stopPropagation();
     setSelectedNodeId((prev) => (prev === nodeId ? null : nodeId));
   };
+  const handleNodeClickRef = useRef(handleNodeClick);
+  handleNodeClickRef.current = handleNodeClick;
 
   // Viewport Controls
   const handleZoomIn = () => setZoom((z) => Math.min(Number((z + 0.15).toFixed(2)), 2.2));
@@ -583,6 +594,14 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({
         transform={{ x: pan.x, y: pan.y, k: zoom }}
         size={{ width: activeViewportWidth, height: activeViewportHeight }}
       />
+      {paintLod && (
+        <LodNodeLayer
+          nodes={virtual.visible}
+          transform={{ x: pan.x, y: pan.y, k: zoom }}
+          size={{ width: activeViewportWidth, height: activeViewportHeight }}
+          skip={selectedPinned}
+        />
+      )}
 
       {/* Transform Layer */}
       <div
@@ -659,48 +678,33 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({
         )}
 
         {/* Group Nodes (Background Layer: z-index 1) */}
-        {visibleNodes
-          .filter((n) => n.type === 'group')
-          .map((group) => {
-            // Same tree the editor uses, so the viewer cannot report a
-            // different count than the board it is mirroring.
-            const count = viewerIndex.containedIds(group.id).length;
-            return (
-              <div
-                key={group.id}
-                onClick={(e) => handleNodeClick(group.id, e)}
-                style={{ display: 'contents' }}
-              >
-                <NodeRenderer
-                  node={group}
-                  currentUser={currentUser}
-                  containedCount={count}
-                  depth={depth}
-                  lod={lodLevel}
-                  isSelected={selectedNodeId === group.id}
-                />
-              </div>
-            );
-          })}
+        {visibleGroups.map((group) => (
+          // Same tree the editor uses, so the viewer cannot report a
+          // different count than the board it is mirroring.
+          <ViewerNodeItem
+            key={group.id}
+            node={group}
+            currentUser={currentUser}
+            depth={depth}
+            lod={lodLevel}
+            isSelected={selectedNodeId === group.id}
+            containedCount={viewerIndex.containedIds(group.id).length}
+            onSelect={handleNodeClickRef}
+          />
+        ))}
 
         {/* Content & Resource Nodes (Top Layer: z-index 3) */}
-        {visibleNodes
-          .filter((n) => n.type !== 'group')
-          .map((node) => (
-            <div
-              key={node.id}
-              onClick={(e) => handleNodeClick(node.id, e)}
-              style={{ display: 'contents' }}
-            >
-              <NodeRenderer
-                node={node}
-                currentUser={currentUser}
-                depth={depth}
-                lod={lodLevel}
-                isSelected={selectedNodeId === node.id}
-              />
-            </div>
-          ))}
+        {visibleCards.map((node) => (
+          <ViewerNodeItem
+            key={node.id}
+            node={node}
+            currentUser={currentUser}
+            depth={depth}
+            lod={lodLevel}
+            isSelected={selectedNodeId === node.id}
+            onSelect={handleNodeClickRef}
+          />
+        ))}
       </div>
     </div>
   );

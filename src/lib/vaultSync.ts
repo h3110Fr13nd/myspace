@@ -1,3 +1,4 @@
+import { extractInlineRelationships } from './relationships';
 import JSZip from 'jszip';
 import path from 'path';
 import { query } from './db';
@@ -270,6 +271,8 @@ export async function syncVaultFiles(
             tier,
             isMdx: ext === '.mdx',
             wikilinks: meta.wikilinks || [],
+            ...(meta.relationships ? { relationships: meta.relationships } : {}),
+            linkRelationships: extractInlineRelationships(body),
             contentLength: body.length,
             previewText: body.slice(0, 300),
             contentHash: (await import('crypto')).createHash('sha256').update(file.data).digest('hex'),

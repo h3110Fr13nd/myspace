@@ -1,4 +1,4 @@
-import * as d3 from 'd3';
+import type * as d3 from 'd3';
 
 export interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
@@ -12,6 +12,8 @@ export interface GraphNode extends d3.SimulationNodeDatum {
 export interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
   source: string | GraphNode;
   target: string | GraphNode;
+  /** Relationship name; several links may join the same pair. */
+  label?: string;
 }
 
 export interface GraphViewProps {
@@ -21,6 +23,12 @@ export interface GraphViewProps {
   currentUser?: string;
   onNodeClick?: (nodeId: string) => void;
   onExpand?: () => void;
+  /**
+   * Called before the built-in full-screen view opens. Resolving to `true`
+   * means the caller opened its own view (the streamed graph for large
+   * workspaces), so the classic modal — and its whole-graph fetch — is skipped.
+   */
+  onExpandOverride?: () => boolean | Promise<boolean>;
   fullGraphLoading?: boolean;
   fullGraphError?: string | null;
 }

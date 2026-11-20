@@ -33,6 +33,7 @@ import {
   type Size,
   type ViewportTransform,
 } from './transform';
+import { flightMs, flightTarget, flyTo as flyAt, prefersReducedMotion } from '../../../lib/viewer/camera';
 
 export interface ViewportOptions {
   initial?: Partial<ViewportTransform>;
@@ -74,8 +75,13 @@ export interface ViewportApi {
   zoomIn: (clientPoint?: Point) => void;
   zoomOut: (clientPoint?: Point) => void;
   panByScreen: (dx: number, dy: number) => void;
-  /** Frame a world rect inside the viewport. */
-  fitTo: (rect: Rect, opts?: { padding?: number; maxUpscale?: number }) => void;
+  /** Frame a world rect inside the viewport; `animate` flies there. */
+  fitTo: (rect: Rect, opts?: { padding?: number; maxUpscale?: number; animate?: boolean }) => void;
+  /**
+   * Animate to a transform: zoom out, travel, zoom in (shared with the
+   * streamed graph). Any other camera change cancels the flight.
+   */
+  flyTo: (target: ViewportTransform) => void;
   /** Reset to 100% at a given origin. */
   reset: (origin?: Point) => void;
   /** Centre a world point. */
@@ -146,8 +152,14 @@ export function useViewport(options: ViewportOptions = {}): ViewportApi {
     });
   }, []);
 
+  const flightRef = useRef(0);
+  const cancelFlight = useCallback(() => {
+    if (flightRef.current) cancelAnimationFrame(flightRef.current);
+    flightRef.current = 0;
+  }, []);
+
   /** Apply a transform. Always frame-synced into React; the DOM is updated now. */
-  const set = useCallback(
+  const apply = useCallback(
     (next: ViewportTransform) => {
       const k = clampScale(next.k, min, max);
       const t: ViewportTransform = { x: next.x, y: next.y, k };
@@ -158,6 +170,39 @@ export function useViewport(options: ViewportOptions = {}): ViewportApi {
       scheduleCommit();
     },
     [min, max, paint, scheduleCommit]
+  );
+
+  /** Public setter: a direct camera change wins over an in-progress flight. */
+  const set = useCallback(
+    (next: ViewportTransform) => {
+      cancelFlight();
+      apply(next);
+    },
+    [apply, cancelFlight]
+  );
+
+  const flyTo = useCallback(
+    (target: ViewportTransform) => {
+      cancelFlight();
+      const from = transformRef.current;
+      const view = sizeRef.current;
+      const k = clampScale(target.k, min, max);
+      const goal = { ...target, k };
+      if (prefersReducedMotion() || typeof requestAnimationFrame === 'undefined') {
+        apply(goal);
+        return;
+      }
+      const dest = flightTarget(goal, view);
+      const ms = flightMs(from, goal, view);
+      const start = performance.now();
+      const step = () => {
+        const t = Math.min(1, (performance.now() - start) / ms);
+        apply(t < 1 ? flyAt(from, dest, view, t) : goal);
+        flightRef.current = t < 1 ? requestAnimationFrame(step) : 0;
+      };
+      flightRef.current = requestAnimationFrame(step);
+    },
+    [apply, cancelFlight, max, min]
   );
 
   const setInteracting = useCallback((v: boolean) => {
@@ -223,18 +268,18 @@ export function useViewport(options: ViewportOptions = {}): ViewportApi {
   );
 
   const fitTo = useCallback(
-    (rect: Rect | null, opts?: { padding?: number; maxUpscale?: number }) => {
+    (rect: Rect | null, opts?: { padding?: number; maxUpscale?: number; animate?: boolean }) => {
       if (!rect || rect.width <= 0 || rect.height <= 0) return;
-      set(
-        fitTransform(transformRef.current, rect, sizeRef.current, {
-          padding: opts?.padding ?? FIT_PADDING,
-          min,
-          max,
-          maxUpscale: opts?.maxUpscale ?? 1,
-        })
-      );
+      const next = fitTransform(transformRef.current, rect, sizeRef.current, {
+        padding: opts?.padding ?? FIT_PADDING,
+        min,
+        max,
+        maxUpscale: opts?.maxUpscale ?? 1,
+      });
+      if (opts?.animate) flyTo(next);
+      else set(next);
     },
-    [max, min, set]
+    [flyTo, max, min, set]
   );
 
   const reset = useCallback(
@@ -306,6 +351,7 @@ export function useViewport(options: ViewportOptions = {}): ViewportApi {
   useEffect(
     () => () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (flightRef.current) cancelAnimationFrame(flightRef.current);
     },
     []
   );  return useMemo<ViewportApi>(
@@ -324,6 +370,7 @@ export function useViewport(options: ViewportOptions = {}): ViewportApi {
       zoomOut,
       panByScreen,
       fitTo,
+      flyTo,
       reset,
       centerOn,
       toWorld,
@@ -346,6 +393,7 @@ export function useViewport(options: ViewportOptions = {}): ViewportApi {
       zoomOut,
       panByScreen,
       fitTo,
+      flyTo,
       reset,
       centerOn,
       toWorld,

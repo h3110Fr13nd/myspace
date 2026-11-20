@@ -507,7 +507,11 @@ export function enforceInvariants(
   opts: { padding?: number; manualGroupBounds?: ReadonlySet<string> } = {}
 ): CanvasNode[] {
   const { padding = GROUP_PADDING, manualGroupBounds } = opts;
-  let current = nodes.map((n) => ({ ...n }));
+  // A shallow copy of the array, not of every node: nothing below mutates a
+  // node in place (each change produces a new object), so unchanged nodes keep
+  // their identity. Copying them all made every commit look like a change to
+  // every node, defeating memoised rendering and cached edge routes.
+  let current = nodes.slice();
 
   /**
    * Bounded rather than `while (true)`: each pass either settles or removes at

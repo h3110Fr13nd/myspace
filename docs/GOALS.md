@@ -4,6 +4,30 @@
 **Last reviewed:** 2026-11-12
 **Applies to:** the FOSS Content Workspace application and its default runtime
 
+### Graph and canvas scale (2026-11-17)
+
+New requirement: keep the graph and canvas views usable at a million nodes.
+Implemented without new services (PostgreSQL + the optional worker): a tiled
+level-of-detail graph (precomputed positions, pre-gzipped tiles, per-layer
+authorization verified against OpenFGA, per-node change tracking), canvas
+viewport virtualisation and far-zoom painting, motion impostors for dense
+layers, and fixes for an O(N²) canvas commit and several per-frame O(N) paths.
+Measured against the original code on the same machine (see
+[`docs/perf/SCALING.md`](perf/SCALING.md)): opening the graph at 1M resources
+went from 18 s CPU / 2.2 GB per request (OOM under the 192 MB heap cap) to a
+0.85 ms tile read; the canvas editor at 10k nodes from 283k DOM nodes and a
+6-minute input backlog to ~1.9k DOM nodes and 32 s for the same script;
+canvas viewer p95 frames at 50k nodes from 2.5 s to 33 ms. The workspace
+listing query was fixed from 168 s to 8 s at 1M resources, but the page shell
+(home/folder/tag) remains O(N) — ~25 s per home view at 1M — and is the
+documented next step. Also fixed: anonymous canvas overwrite/delete/create, a
+private-title leak in the canvas list, and stored canvas data bypassing
+per-node redaction. Budget exception, documented: the pyramid builder needs
+~0.8 GB at 1M resources and runs in the worker; on the 1 GiB reference host,
+builds beyond ~200k resources should run off-host. Unit (769), integration
+(18) and browser (88 of 90; the two reader-route failures need seeded
+content and predate this work) suites pass.
+
 ### Current account-navigation evidence (2026-11-12)
 
 The account dropdown now dismisses when keyboard focus leaves it and scrolls

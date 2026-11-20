@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { extractInlineRelationships } from './relationships';
 import * as fs from 'fs';
 import * as path from 'path';
 import { query } from './db';
@@ -536,6 +537,8 @@ export async function createResource(input: CreateResourceInput): Promise<Create
   if (input.template) metadata.template = input.template;
   if (targetFilePath) metadata.filePath = targetFilePath;
   if (wikilinks.length > 0) metadata.wikilinks = wikilinks;
+  const linkRelationships = extractInlineRelationships(scaffold.content);
+  if (linkRelationships.length > 0) metadata.linkRelationships = linkRelationships;
   metadata.createdBy = currentUser;
 
   const validatedMetadata = validateResourceMetadata(type, metadata);

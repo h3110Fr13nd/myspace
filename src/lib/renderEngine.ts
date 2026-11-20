@@ -168,6 +168,21 @@ export function renderMarkdownWithEmbeds(
     text = text.replace(/^---[\s\S]*?---\s*/, '');
   }
 
+  // Inline code is literal: keep math, wikilinks, embeds and highlights from
+  // rewriting it (e.g. `[[note]]` in a syntax table rendered as anchor HTML).
+  const inlineCode: string[] = [];
+  text = text
+    .split(/(^(?:```|~~~)[^\n]*\n[\s\S]*?^(?:```|~~~)[ \t]*$)/m)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part // a fenced block: left to the code renderer
+        : part.replace(/(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g, (_m, _ticks, code: string) => {
+            inlineCode.push(code.trim().replace(/\\\|/g, '|'));
+            return `@@INLINECODE${inlineCode.length - 1}@@`;
+          })
+    )
+    .join('');
+
   text = applyMdxComponents(text);
   text = applyCustomEditorBlocks(text);
   text = applyCallouts(text);
@@ -186,7 +201,8 @@ export function renderMarkdownWithEmbeds(
   text = text.replace(/^(\s*)-\s+\[ \]\s+(.*)$/gm, '$1<li class="task-list-item"><input type="checkbox" disabled /> <span>$2</span></li>');
   text = text.replace(/^(\s*)-\s+\[[xX]\]\s+(.*)$/gm, '$1<li class="task-list-item"><input type="checkbox" checked disabled /> <span>$2</span></li>');
 
-  return localMarked.parse(text) as string;
+  const restoreCode = (s: string) => s.replace(/@@INLINECODE(\d+)@@/g, (_m, i) => `<code>${escapeHtml(inlineCode[+i] ?? '')}</code>`);
+  return restoreCode(localMarked.parse(text) as string);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,7 +219,11 @@ export async function renderMarkdownWithEmbedsAsync(
   if (filePath && (filePath.endsWith('.mdx') || filePath.endsWith('.md')) && fs.existsSync(filePath)) {
     sourceText = resolveMdxFileImports(filePath);
   } else {
-    sourceText = sourceText.replace(/^---[\s\S]*?---\s*/, '');
+    // MDX notes stored in the database keep their leading `import … from '…'`
+    // lines; only that leading block is dropped, never imports inside code.
+    sourceText = sourceText
+      .replace(/^---[\s\S]*?---\s*/, '')
+      .replace(/^(?:[ \t]*import\s[^\n]*?from\s+['"][^'"\n]+['"];?[ \t]*(?:\n|$)|[ \t]*\n)+/, '');
   }
 
   const cacheable = canCacheMarkdown(sourceText, depth, filePath);
